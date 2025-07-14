@@ -1,0 +1,15 @@
+# requirements.txt
+
+# --- GUI ---
+PySide6==6.9.1
+QtAwesome==1.3.1
+
+# --- Bildverarbeitung & PDF ---
+# WICHTIG: Pinne NumPy auf die letzte stabile Version vor dem großen 2.0-Update,
+# um Kompatibilitätsprobleme mit PyInstaller zu vermeiden.
+numpy<2.01
+# Wir legen auch die Version für opencv-python fest, da es von NumPy abhängt.
+opencv-python==4.10.0.84
+Pillow==10.4.0
+PyMuPDF==1.26.3
+appdirs
