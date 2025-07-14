@@ -1,0 +1,121 @@
+# .github/workflows/main.yml
+# Finale Version: Erstellt einen Ordner (.exe + Abhängigkeiten) für Windows und ein Standard .app-Bundle für macOS
+
+name: Build and Release DarkMark Application
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PyInstaller and Application Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir pyinstaller==6.8.0
+        pip install --no-cache-dir -r requirements.txt
+      timeout-minutes: 10
+
+    - name: Extract version from tag
+      id: get_version
+      if: startsWith(github.ref, 'refs/tags/')
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Build Application with PyInstaller
+      timeout-minutes: 20
+      run: |
+        APP_VERSION=${{ steps.get_version.outputs.VERSION || 'dev' }}
+        echo "Building version $APP_VERSION"
+        
+        DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
+        ICON_PARAM=$([ "$RUNNER_OS" == "Windows" ] && echo "--icon icon.ico" || echo "--icon icon.icns")
+        
+        BUILD_MODE_PARAM=""
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          BUILD_MODE_PARAM="--windowed"
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          BUILD_MODE_PARAM="--windowed"
+        fi
+
+        pyinstaller --noconfirm main.py \
+          --name "DarkMark" \
+          $BUILD_MODE_PARAM \
+          --clean \
+          --add-data "darkmark_temp_pages${DATA_SEPARATOR}darkmark_temp_pages" \
+          --add-data "assets${DATA_SEPARATOR}assets" \
+          --hidden-import "PySide6.QtSvg" \
+          --hidden-import "PySide6.QtNetwork" \
+          --hidden-import "qtawesome" \
+          --hidden-import "PIL.ImageQt" \
+          $ICON_PARAM
+      shell: bash
+
+    # NEU: Debugging-Schritt für macOS, um den Inhalt des dist-Verzeichnisses zu überprüfen
+    - name: Debug PyInstaller Output on macOS
+      if: runner.os == 'macOS'
+      run: |
+        echo "Contents of dist directory:"
+        ls -R dist
+        echo "Done listing dist directory."
+      shell: bash
+
+    - name: Prepare Windows Release Artifact
+      if: runner.os == 'Windows'
+      id: prepare_win
+      shell: powershell
+      run: |
+        $APP_VERSION = "${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        $SOURCE_PATH = "dist/DarkMark" 
+        $ARTIFACT_NAME = "DarkMark-v$($APP_VERSION)-windows.zip"
+        Compress-Archive -Path $SOURCE_PATH -DestinationPath $ARTIFACT_NAME -Force
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Prepare macOS Release Artifact
+      if: runner.os == 'macOS'
+      id: prepare_mac
+      shell: bash
+      run: |
+        APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        ARTIFACT_NAME="DarkMark-v${APP_VERSION}-macos.zip"
+        # Zusätzliche Prüfung vor ditto
+        if [ ! -d "dist/DarkMark.app" ]; then
+          echo "Error: dist/DarkMark.app not found. PyInstaller build failed for macOS?"
+          exit 1 # Workflow beenden, wenn die App nicht gefunden wird
+        fi
+        ditto -c -k --sequesterRsrc --keepParent "dist/DarkMark.app" "${ARTIFACT_NAME}"
+        echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: DarkMark-Build-${{ matrix.os }}
+        path: ${{ steps.prepare_win.outputs.ARTIFACT_NAME || steps.prepare_mac.outputs.ARTIFACT_NAME }}
+        if-no-files-found: error
+
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          DarkMark-v${{ steps.get_version.outputs.VERSION }}-windows.zip
+          DarkMark-v${{ steps.get_version.outputs.VERSION }}-macos.zip
