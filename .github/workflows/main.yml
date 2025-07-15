@@ -48,27 +48,42 @@ jobs:
         echo "Building version $APP_VERSION"
         
         DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
-        ICON_PARAM=$([ "$RUNNER_OS" == "Windows" ] && echo "--icon icon.ico" || echo "--icon icon.icns")
         
-        BUILD_MODE_PARAM=""
+        # NEU: Argumente als Array für robuste Übergabe an PyInstaller
+        args=(
+          --noconfirm
+          main.py
+          --name "DarkMark"
+          --clean
+          --add-data "assets${DATA_SEPARATOR}assets" # 'assets' Ordner muss existieren
+          --hidden-import "PySide6.QtSvg"
+          --hidden-import "PySide6.QtNetwork"
+          --hidden-import "qtawesome"
+          --hidden-import "PIL.ImageQt"
+        )
+
+        # Icon hinzufügen, falls die Datei existiert
         if [ "$RUNNER_OS" == "Windows" ]; then
-          BUILD_MODE_PARAM="--windowed"
+          if [ -f "icon.ico" ]; then
+            args+=(--icon "icon.ico")
+          else
+            echo "WARNUNG: icon.ico nicht gefunden für Windows-Build."
+          fi
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          BUILD_MODE_PARAM="--windowed"
+          if [ -f "icon.icns" ]; then
+            args+=(--icon "icon.icns")
+          else
+            echo "WARNUNG: icon.icns nicht gefunden für macOS-Build."
+          fi
         fi
 
-        pyinstaller --noconfirm main.py \
-          --name "DarkMark" \
-          $BUILD_MODE_PARAM \
-          --clean \
-          # GEÄNDERT: Die Zeile für darkmark_temp_pages wurde entfernt, da sie nicht mehr gebündelt werden muss
-          # --add-data "darkmark_temp_pages${DATA_SEPARATOR}darkmark_temp_pages" \
-          --add-data "assets${DATA_SEPARATOR}assets" \
-          --hidden-import "PySide6.QtSvg" \
-          --hidden-import "PySide6.QtNetwork" \
-          --hidden-import "qtawesome" \
-          --hidden-import "PIL.ImageQt" \
-          $ICON_PARAM
+        # --windowed Mode hinzufügen (unterdrückt Konsolenfenster)
+        if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
+          args+=(--windowed)
+        fi
+
+        # Führe PyInstaller mit dem erstellten Argument-Array aus
+        pyinstaller "${args[@]}"
       shell: bash
 
     # Debugging-Schritt für macOS, um den Inhalt des dist-Verzeichnisses zu überprüfen
