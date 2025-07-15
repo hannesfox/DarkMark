@@ -15,8 +15,9 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit
 )
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF
-from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, \
-    QPen, QWheelEvent, QImage
+# KORRIGIERT: QIcon für das Laden des Icons
+from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, \
+    QPainter, QPen, QWheelEvent, QImage, QIcon 
 
 # qtawesome für moderne Icons importieren
 import qtawesome as qta
@@ -54,19 +55,11 @@ def get_base_path() -> str:
 
 
 BASE_PATH = get_base_path()
-# Pfad für mitgelieferte Templates (read-only in gebündelten Apps)
-# Dieser Pfad wird jetzt NICHT MEHR zum Laden von Templates verwendet, nur noch zur Referenz, falls benötigt.
-# BUNDLED_TEMPLATE_DIR_PATH = os.path.join(BASE_PATH, "darkmark_temp_pages") # Entfernt
 
 # Pfad für benutzerdefinierte Templates (immer beschreibbar)
 APP_NAME = "DarkMark"
-APP_AUTHOR = "JohannesGschwendtner"  # Passe dies an deinen Entwicklernamen an
+APP_AUTHOR = "JohannesGschwendtner"
 USER_TEMPLATES_PATH = os.path.join(user_data_dir(APP_NAME, APP_AUTHOR), "darkmark_user_templates")
-
-# Sicherstellen, dass der globale temporäre Ordner existiert
-# TEMP_IMAGE_DIR_GLOBAL entfernt
-# if not os.path.exists(TEMP_IMAGE_DIR_GLOBAL):
-#     os.makedirs(TEMP_IMAGE_DIR_GLOBAL)
 
 MATCH_THRESHOLD = 0.6
 RENDER_DPI = 300
@@ -76,7 +69,7 @@ RENDER_DPI = 300
 #      KERNAUFGABEN (load_template_images angepasst)
 # ==============================================================================
 
-# GEÄNDERT: load_template_images lädt jetzt NUR noch aus user_template_dir
+# load_template_images lädt jetzt NUR noch aus user_template_dir
 def load_template_images(user_template_dir: str) -> List[Dict[str, Any]]:
     templates_data = []
 
@@ -87,8 +80,8 @@ def load_template_images(user_template_dir: str) -> List[Dict[str, Any]]:
             print(f"DEBUG: Benutzer-Template-Ordner erstellt: {user_template_dir}")
         except OSError as e:
             print(f"WARNUNG: Konnte Benutzer-Template-Ordner nicht erstellen: {user_template_dir}: {e}")
-            return []  # Keine Templates, wenn Ordner nicht erstellt werden kann
-
+            return []
+            
     if os.path.isdir(user_template_dir):
         for filename in os.listdir(user_template_dir):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
@@ -354,7 +347,7 @@ class DrawingCanvas(QLabel):
         if self.main_app.state["template_canvas_panning"] and event.button() == Qt.MouseButton.MiddleButton:
             self.main_app.state["template_canvas_panning"] = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
-        elif event.button() == Qt.MouseButton.LeftButton:
+        elif self.main_app.state["template_canvas_drawing"] and event.button() == Qt.MouseButton.LeftButton:
             self.main_app.state["template_canvas_drawing"] = False
             self.main_app.state["template_canvas_end_point_orig"] = self.map_widget_to_image(pos)
 
@@ -376,12 +369,27 @@ class DrawingCanvas(QLabel):
 class DarkMarkApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DarkMark")
+        self.setWindowTitle("DarkMark 1.1.0")
         self.setGeometry(100, 100, 1400, 900)
         self.setMinimumSize(1000, 700)
 
         self._set_macos_style_with_fallback()
-        #self.setWindowIcon(qta.icon('fa5s.user-secret', color='#E0E1E1'))
+        # KORRIGIERT: Setze das Fenster-Icon explizit aus der eingebetteten .ico-Datei
+        icon_path_ico = os.path.join(get_base_path(), "icon.ico")
+        icon_path_icns = os.path.join(get_base_path(), "icon.icns")
+        
+        if sys.platform == "darwin": # macOS verwendet .icns
+            if os.path.exists(icon_path_icns):
+                self.setWindowIcon(QIcon(icon_path_icns))
+                print(f"DEBUG: macOS WindowIcon geladen von: {icon_path_icns}")
+            else:
+                print(f"WARNUNG: macOS Icon nicht gefunden unter: {icon_path_icns}")
+        else: # Windows und andere verwenden .ico
+            if os.path.exists(icon_path_ico):
+                self.setWindowIcon(QIcon(icon_path_ico))
+                print(f"DEBUG: Windows WindowIcon geladen von: {icon_path_ico}")
+            else:
+                print(f"WARNUNG: Windows Icon nicht gefunden unter: {icon_path_ico}")
 
         self.setAcceptDrops(True)
 
@@ -409,7 +417,6 @@ class DarkMarkApp(QMainWindow):
             "template_canvas_start_point_orig": QPointF(),
             "template_canvas_end_point_orig": QPointF(),
         }
-        # GEÄNDERT: Templates werden jetzt NUR aus dem USER_TEMPLATES_PATH geladen
         self.templates_data = load_template_images(USER_TEMPLATES_PATH)
         self.thread_pool = QThreadPool()
         print(f"INFO: Thread-Pool mit {self.thread_pool.maxThreadCount()} Threads gestartet.")
@@ -467,7 +474,7 @@ class DarkMarkApp(QMainWindow):
         if os.path.exists(logo_path):
             logo_pixmap = QPixmap(logo_path)
             icon_label.setPixmap(logo_pixmap.scaled(
-                150, 150,
+                60, 60,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             ))
@@ -475,8 +482,7 @@ class DarkMarkApp(QMainWindow):
             print(f"WARNUNG: Logo-Datei nicht gefunden unter: {logo_path}")
             icon_label.setPixmap(qta.icon('fa5s.user-secret', color='#00AEEF').pixmap(32, 32))
 
-        title_label = QLabel("Version\n1.1.3")
-
+        title_label = QLabel("DarkMark")
         title_label.setObjectName("HeaderLabel")
 
         header_layout.addWidget(icon_label)
@@ -487,7 +493,7 @@ class DarkMarkApp(QMainWindow):
 
         # GEÄNDERT: tpl_status_label als Instanzattribut
         self.tpl_status = QLabel("")
-        self.tpl_status.setStyleSheet(f"color: #4CAF50; font-style: italic;")  # Initialer Stil
+        self.tpl_status.setStyleSheet(f"color: #4CAF50; font-style: italic;")
         self.tpl_status.setWordWrap(True)
         left_layout.addWidget(self.tpl_status)
 
@@ -496,7 +502,7 @@ class DarkMarkApp(QMainWindow):
         redaction_ui_layout = QVBoxLayout(self.redaction_ui_group)
         redaction_ui_layout.setContentsMargins(0, 0, 0, 0)
 
-        file_box = QGroupBox("1. Quelle wählen:")
+        file_box = QGroupBox("1. Quelle auswählen")
         file_box_layout = QHBoxLayout()
         self.single_pdf_button = QPushButton(qta.icon('fa5.file-pdf'), " Einzelne PDF")
         self.single_pdf_button.clicked.connect(self.pick_single_pdf)
@@ -507,7 +513,7 @@ class DarkMarkApp(QMainWindow):
         file_box.setLayout(file_box_layout)
         redaction_ui_layout.addWidget(file_box)
 
-        self.status_label = QLabel("Eine PDF-Datei oder Ordner wählen (oder per Drag&Drop ziehen ;-).")
+        self.status_label = QLabel("Bitte eine PDF-Datei oder einen Ordner auswählen (oder per Drag&Drop ziehen).")
         self.status_label.setWordWrap(True)
         self.status_label.setObjectName("StatusLabel")
         redaction_ui_layout.addWidget(self.status_label)
@@ -515,7 +521,7 @@ class DarkMarkApp(QMainWindow):
         self.progress_bar.setVisible(False)
         redaction_ui_layout.addWidget(self.progress_bar)
 
-        nav_box = QGroupBox("Navigation:")
+        nav_box = QGroupBox("Navigation")
         nav_layout = QVBoxLayout(nav_box)
         pdf_nav_layout = QHBoxLayout()
         self.prev_pdf_button = QPushButton(qta.icon('fa5s.chevron-left'), "")
@@ -541,9 +547,9 @@ class DarkMarkApp(QMainWindow):
 
         redaction_ui_layout.addWidget(nav_box)
 
-        action_box = QGroupBox("2. Aktionen:")
+        action_box = QGroupBox("2. Aktion ausführen")
         action_layout = QVBoxLayout(action_box)
-        self.redact_preview_button = QPushButton(qta.icon('fa5s.eye-slash'), " Vorschau schwärzen")
+        self.redact_preview_button = QPushButton(qta.icon('fa5s.eye-slash'), " Alle PDFs schwärzen (Vorschau)")
         self.redact_preview_button.setObjectName("AccentButton")
         self.redact_preview_button.clicked.connect(self.start_batch_preview_redaction)
         action_layout.addWidget(self.redact_preview_button)
@@ -553,11 +559,11 @@ class DarkMarkApp(QMainWindow):
         action_layout.addWidget(self.save_button)
         action_layout.addWidget(self._create_separator())
 
-        self.exit_preview_button = QPushButton(qta.icon('fa5s.undo'), " Zurück")
+        self.exit_preview_button = QPushButton(qta.icon('fa5s.undo'), " Zurück zu Original-PDFs")
         self.exit_preview_button.clicked.connect(self.go_to_original_mode)
         action_layout.addWidget(self.exit_preview_button)
 
-        self.redact_all_button = QPushButton(qta.icon('fa5s.rocket'), " Alle PDFs schwärzen und speichern")
+        self.redact_all_button = QPushButton(qta.icon('fa5s.rocket'), " Alle PDFs verarbeiten & speichern")
         self.redact_all_button.setObjectName("AccentButton")
         self.redact_all_button.clicked.connect(self.redact_all_pdfs_batch)
         action_layout.addWidget(self.redact_all_button)
@@ -570,21 +576,21 @@ class DarkMarkApp(QMainWindow):
         template_ui_layout = QVBoxLayout(self.template_ui_group)
         template_ui_layout.setContentsMargins(0, 0, 0, 0)
 
-        template_file_box = QGroupBox("1. PDF zum Markieren importieren:")
+        template_file_box = QGroupBox("1. PDF zum Markieren importieren")
         template_file_layout = QHBoxLayout(template_file_box)
         self.import_template_pdf_button = QPushButton(qta.icon('fa5.file-pdf'), " PDF importieren")
         self.import_template_pdf_button.clicked.connect(self.import_pdf_for_template_creation)
         template_file_layout.addWidget(self.import_template_pdf_button)
         template_ui_layout.addWidget(template_file_box)
 
-        template_action_box = QGroupBox("2. Markierungen verwalten:")
+        template_action_box = QGroupBox("2. Markierungen verwalten")
         template_action_layout = QVBoxLayout(template_action_box)
         self.undo_template_button = QPushButton(qta.icon('fa5s.eraser'), " Letzte Markierung entfernen")
         self.undo_template_button.clicked.connect(self.undo_last_template_rectangle)
         self.undo_template_button.setEnabled(False)
         template_action_layout.addWidget(self.undo_template_button)
 
-        self.save_template_button = QPushButton(qta.icon('fa5s.save'), " als Templates speichern")
+        self.save_template_button = QPushButton(qta.icon('fa5s.save'), " Markierte Bereiche als Templates speichern")
         self.save_template_button.setObjectName("AccentButton")
         self.save_template_button.clicked.connect(self.save_marked_areas_as_templates)
         self.save_template_button.setEnabled(False)
@@ -599,15 +605,14 @@ class DarkMarkApp(QMainWindow):
         template_ui_layout.addStretch(1)
 
         # NEU: Templates laden und verwalten Buttons
-        template_load_manage_box = QGroupBox("3. Templates verwalten:")
+        template_load_manage_box = QGroupBox("3. Templates verwalten")
         template_load_manage_layout = QVBoxLayout(template_load_manage_box)
 
         self.reload_user_templates_button = QPushButton(qta.icon('fa5s.sync-alt'), " Templates neu laden")
         self.reload_user_templates_button.clicked.connect(self.reload_templates_data_from_disk)
         template_load_manage_layout.addWidget(self.reload_user_templates_button)
 
-        self.import_templates_button = QPushButton(qta.icon('fa5s.file-import'),
-                                                   " Templates importieren (Ordner wählen)")
+        self.import_templates_button = QPushButton(qta.icon('fa5s.file-import'), " Templates importieren (Ordner wählen)")
         self.import_templates_button.clicked.connect(self.import_templates_from_folder)
         template_load_manage_layout.addWidget(self.import_templates_button)
 
@@ -627,7 +632,7 @@ class DarkMarkApp(QMainWindow):
         left_layout.addStretch(1)  # Flexibler Abstand
 
         # "Templates verwalten" Button ganz unten
-        self.manage_templates_button = QPushButton(qta.icon('fa5s.user-secret'), " Templates bearbeiten (Passwort)")
+        self.manage_templates_button = QPushButton(qta.icon('fa5s.user-secret'), " Templates verwalten (Passwort)")
         self.manage_templates_button.setObjectName("AccentButton")
         self.manage_templates_button.clicked.connect(self.show_template_management_dialog)
         left_layout.addWidget(self.manage_templates_button)
@@ -680,15 +685,15 @@ class DarkMarkApp(QMainWindow):
 
         password, ok = QInputDialog.getText(
             self,
-            "Passwort notwendig",
-            "Passwort für Template-Verwaltung eingeben:",
+            "Passwort benötigt",
+            "Bitte geben Sie das Passwort für die Template-Verwaltung ein:",
             QLineEdit.Password  # Macht die Eingabe verdeckt
         )
 
-        if ok and password == "sessel":
+        if ok and password == "Sessel":
             self.switch_mode("template_creation")
         elif ok:  # OK gedrückt, aber Passwort falsch
-            QMessageBox.warning(self, "Falsches Passwort !!!", "Keine berechtigung zur Template bearbeitung.")
+            QMessageBox.warning(self, "Falsches Passwort", "Das eingegebene Passwort ist nicht korrekt.")
 
     @Slot(str)
     def switch_mode(self, mode: str):
@@ -707,7 +712,6 @@ class DarkMarkApp(QMainWindow):
             self.redaction_ui_group.setVisible(True)
             self.template_ui_group.setVisible(False)
 
-            # GEÄNDERT: Templates werden nach Moduswechsel NUR aus USER_TEMPLATES_PATH geladen
             self.templates_data = load_template_images(USER_TEMPLATES_PATH)
             if self.state["original_pdf_paths"]:
                 self.state["current_pdf_index"] = 0
@@ -732,11 +736,9 @@ class DarkMarkApp(QMainWindow):
         is_in_redaction_mode = (self.state["current_mode"] == "redaction")
         is_in_template_mode = (self.state["current_mode"] == "template_creation")
 
-        # Setze Sichtbarkeit der UI-Gruppen in der linken Leiste
         self.redaction_ui_group.setVisible(is_in_redaction_mode)
         self.template_ui_group.setVisible(is_in_template_mode)
 
-        # Der Manage Templates Button ist nur sichtbar, wenn keine Verarbeitung läuft
         self.manage_templates_button.setEnabled(not is_processing)
 
         # Aktuellen Template-Status des Labels aktualisieren
@@ -745,6 +747,7 @@ class DarkMarkApp(QMainWindow):
         tpl_status_color = "#4CAF50" if self.templates_data else "#FFC107"
         self.tpl_status.setText(tpl_status_text)
         self.tpl_status.setStyleSheet(f"color: {tpl_status_color}; font-style: italic;")
+
 
         if is_in_redaction_mode:
             has_original_docs = bool(self.state["original_pdf_paths"])
@@ -766,7 +769,7 @@ class DarkMarkApp(QMainWindow):
                 self.page_info_label.setText(f"Seite: {page_num + 1}/{doc_to_show.page_count}")
             else:
                 self.pdf_image_label.setPixmap(QPixmap())
-                self.pdf_image_label.setText("PDF-Datei oder Ordner wählen (oder per Drag&Drop ziehen;-).")
+                self.pdf_image_label.setText("Bitte PDF-Datei oder Ordner auswählen (oder per Drag&Drop ziehen).")
                 self.pdf_image_label.setObjectName("Placeholder")
                 self.page_info_label.setText("Seite: -/-")
 
@@ -818,7 +821,7 @@ class DarkMarkApp(QMainWindow):
             # NEU: Buttons für Template-Verwaltung im Template-Modus
             templates_in_user_dir = len(
                 [f for f in os.listdir(USER_TEMPLATES_PATH) if os.path.isfile(os.path.join(USER_TEMPLATES_PATH, f))]) \
-                if os.path.exists(USER_TEMPLATES_PATH) else 0
+                                     if os.path.exists(USER_TEMPLATES_PATH) else 0
 
             self.reload_user_templates_button.setEnabled(not is_processing)
             self.import_templates_button.setEnabled(not is_processing)
@@ -1015,7 +1018,7 @@ class DarkMarkApp(QMainWindow):
         self.progress_bar.setMaximum(self.preview_batch_total)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
-        self.status_label.setText("Berechne-Schwärzung ...")
+        self.status_label.setText("Vorschau-Schwärzung wird vorbereitet...")
         self.update_ui()
 
         for original_path in self.state["original_pdf_paths"]:
@@ -1076,7 +1079,7 @@ class DarkMarkApp(QMainWindow):
                 shutil.copy(current_preview_path, save_path)
                 self.status_label.setText(f"Gespeichert: {os.path.basename(save_path)}")
             except Exception as e:
-                QMessageBox.critical(self, "Speicherfehler", f"Ein Fehler ist aufgetreten:\n{e}")
+                QMessageBox.critical(self, "Speicherfehler", f"Fehler beim Speichern:\n{e}")
 
     def redact_all_pdfs_batch(self):
         if not self.state["original_pdf_paths"]:
@@ -1149,9 +1152,6 @@ class DarkMarkApp(QMainWindow):
             self.clear_all_docs()
             self.thread_pool.clear()
             self.thread_pool.waitForDone()
-            # GEÄNDERT: TEMP_IMAGE_DIR_GLOBAL entfernt
-            # if os.path.exists(TEMP_IMAGE_DIR_GLOBAL):
-            #     shutil.rmtree(TEMP_IMAGE_DIR_GLOBAL, ignore_errors=True)
             event.accept()
         else:
             event.ignore()
@@ -1424,7 +1424,7 @@ class DarkMarkApp(QMainWindow):
             f"Import abgeschlossen: {imported_count} importiert, {skipped_count} übersprungen/fehlgeschlagen.")
         QMessageBox.information(self, "Templates importiert",
                                 f"{imported_count} Templates erfolgreich importiert.\n{skipped_count} Templates konnten nicht importiert werden (z.B. Fehler beim Kopieren, Schreibrechte, etc.).")
-        self.reload_templates_data_from_disk()  # Templates-Liste in der App aktualisieren
+        self.reload_templates_data_from_disk()
 
     # NEU: Methode zum Sichern aller Templates im Benutzerverzeichnis
     @Slot()
@@ -1434,8 +1434,8 @@ class DarkMarkApp(QMainWindow):
                                 "Bitte warten Sie, bis die aktuelle Verarbeitung abgeschlossen ist.")
             return
 
-        if not os.path.exists(USER_TEMPLATES_PATH) or len([f for f in os.listdir(USER_TEMPLATES_PATH) if
-                                                           os.path.isfile(os.path.join(USER_TEMPLATES_PATH, f))]) == 0:
+        if not os.path.exists(USER_TEMPLATES_PATH) or len(
+                [f for f in os.listdir(USER_TEMPLATES_PATH) if os.path.isfile(os.path.join(USER_TEMPLATES_PATH, f))]) == 0:
             QMessageBox.information(self, "Sicherung", "Keine Benutzer-Templates zum Sichern vorhanden.")
             return
 
@@ -1461,7 +1461,7 @@ class DarkMarkApp(QMainWindow):
             f"Sicherung abgeschlossen: {backed_up_count} gesichert, {skipped_count} übersprungen/fehlgeschlagen.")
         QMessageBox.information(self, "Templates gesichert",
                                 f"{backed_up_count} Templates erfolgreich gesichert im Ordner:\n'{dest_dir}'\n{skipped_count} Templates konnten nicht gesichert werden.")
-        self.update_ui()  # UI aktualisieren, falls sich Button-Zustände ändern
+        self.update_ui()
 
     # NEU: Methode zum Löschen aller Templates im Benutzerverzeichnis
     @Slot()
@@ -1471,10 +1471,9 @@ class DarkMarkApp(QMainWindow):
                                 "Bitte warten Sie, bis die aktuelle Verarbeitung abgeschlossen ist.")
             return
 
-        # Zähle die Dateien im Ordner (ohne Unterordner, nur für die Anzeige)
-        num_templates = len(
-            [f for f in os.listdir(USER_TEMPLATES_PATH) if os.path.isfile(os.path.join(USER_TEMPLATES_PATH, f))]) \
-            if os.path.exists(USER_TEMPLATES_PATH) else 0
+        num_templates = len([f for f in os.listdir(USER_TEMPLATES_PATH) if
+                             os.path.isfile(os.path.join(USER_TEMPLATES_PATH, f))]) \
+                        if os.path.exists(USER_TEMPLATES_PATH) else 0
 
         if num_templates == 0:
             QMessageBox.information(self, "Templates löschen", "Keine Benutzer-Templates zum Löschen gefunden.")
@@ -1489,13 +1488,13 @@ class DarkMarkApp(QMainWindow):
             try:
                 if os.path.exists(USER_TEMPLATES_PATH):
                     shutil.rmtree(USER_TEMPLATES_PATH)
-                    os.makedirs(USER_TEMPLATES_PATH)  # Ordner neu erstellen, damit er existiert
+                    os.makedirs(USER_TEMPLATES_PATH)
                     print(f"DEBUG: Alle Benutzer-Templates in '{USER_TEMPLATES_PATH}' gelöscht.")
                     self.status_label.setText("Alle Benutzer-Templates gelöscht.")
                 else:
                     self.status_label.setText("Keine Benutzer-Templates zum Löschen gefunden (Ordner existiert nicht).")
 
-                self.reload_templates_data_from_disk()  # Templates-Liste in der App aktualisieren
+                self.reload_templates_data_from_disk()
                 QMessageBox.information(self, "Templates gelöscht", "Alle Benutzer-Templates erfolgreich gelöscht.")
             except Exception as e:
                 QMessageBox.critical(self, "Fehler beim Löschen", f"Ein Fehler ist aufgetreten:\n{e}")
