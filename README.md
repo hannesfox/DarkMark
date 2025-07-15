@@ -1,5 +1,5 @@
 # DarkMark
-# DarkMark 1.1.0
+# DarkMark 1.1.3
 
 **Ein modernes Tool zur automatischen Schwärzung von PDF-Dokumenten**
 
