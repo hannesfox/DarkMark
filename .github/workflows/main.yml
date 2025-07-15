@@ -119,19 +119,18 @@ jobs:
     - name: Debug Windows Build Output
       if: runner.os == 'Windows'
       run: |
-        Write-Host "Contents of dist directory:"
-        Get-ChildItem -Path "dist" -Recurse
-        Write-Host "Checking DarkMark.exe properties:"
-        $exePath = "dist/DarkMark/DarkMark.exe"
-        if (Test-Path $exePath) {
-          Write-Host "✓ DarkMark.exe found"
-          Get-ItemProperty $exePath
-        } else {
-          Write-Host "✗ DarkMark.exe NOT found"
-        }
-        Write-Host "Checking for icon files in dist:"
-        Get-ChildItem -Path "dist" -Recurse -Filter "*.ico"
-      shell: powershell
+        echo "Contents of dist directory:"
+        ls -la dist/
+        echo "Checking if DarkMark.exe exists:"
+        if [ -f "dist/DarkMark/DarkMark.exe" ]; then
+          echo "✓ DarkMark.exe found"
+          ls -la "dist/DarkMark/DarkMark.exe"
+        else
+          echo "✗ DarkMark.exe NOT found"
+        fi
+        echo "Checking for icon files in dist:"
+        find dist/ -name "*.ico" -type f || echo "No .ico files found"
+      shell: bash
 
     # Debugging-Schritt für macOS
     - name: Debug macOS Build Output
