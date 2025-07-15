@@ -61,7 +61,8 @@ jobs:
           --name "DarkMark" \
           $BUILD_MODE_PARAM \
           --clean \
-          --add-data "darkmark_temp_pages${DATA_SEPARATOR}darkmark_temp_pages" \
+          # GEÄNDERT: Die Zeile für darkmark_temp_pages wurde entfernt, da sie nicht mehr gebündelt werden muss
+          # --add-data "darkmark_temp_pages${DATA_SEPARATOR}darkmark_temp_pages" \
           --add-data "assets${DATA_SEPARATOR}assets" \
           --hidden-import "PySide6.QtSvg" \
           --hidden-import "PySide6.QtNetwork" \
@@ -70,7 +71,7 @@ jobs:
           $ICON_PARAM
       shell: bash
 
-    # NEU: Debugging-Schritt für macOS, um den Inhalt des dist-Verzeichnisses zu überprüfen
+    # Debugging-Schritt für macOS, um den Inhalt des dist-Verzeichnisses zu überprüfen
     - name: Debug PyInstaller Output on macOS
       if: runner.os == 'macOS'
       run: |
