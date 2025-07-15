@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit 
 )
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF 
-from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, QPen, QWheelEvent, QImage, QIcon # QIcon bleibt importiert
+# QIcon bleibt importiert
+from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, QPen, QWheelEvent, QImage, QIcon 
 
 
 # qtawesome für moderne Icons importieren
@@ -335,10 +336,10 @@ class DrawingCanvas(QLabel):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         pos = event.position()
-        if self.main_app.state["template_canvas_panning"] and event.button() == Qt.MouseButton.MiddleButton:
+        if event.button() == Qt.MouseButton.MiddleButton:
             self.main_app.state["template_canvas_panning"] = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
-        elif self.main_app.state["template_canvas_drawing"] and event.button() == Qt.MouseButton.LeftButton:
+        elif event.button() == Qt.MouseButton.LeftButton:
             self.main_app.state["template_canvas_drawing"] = False
             self.main_app.state["template_canvas_end_point_orig"] = self.map_widget_to_image(pos)
 
@@ -364,25 +365,25 @@ class DarkMarkApp(QMainWindow):
         self.setMinimumSize(1000, 700)
 
         self._set_macos_style_with_fallback()
-        # KORRIGIERT: Setze das Fenster-Icon explizit FÜR DIE QAPP ANSTATT QMAINWINDOW, um Konsistenz zu erzwingen
-        # Dies ist der robusteste Weg, damit Windows das Icon korrekt anzeigt.
-        icon_path_ico = os.path.join(get_base_path(), "icon.ico")
-        icon_path_icns = os.path.join(get_base_path(), "icon.icns") # Für macOS, auch wenn es dort nicht das Problem ist.
-        
-        # Versuche, das Icon auf App-Ebene zu setzen
-        app = QApplication.instance()
-        if sys.platform == "darwin": # macOS verwendet .icns
-            if os.path.exists(icon_path_icns):
-                app.setWindowIcon(QIcon(icon_path_icns))
-                print(f"DEBUG: macOS QApplication icon geladen von: {icon_path_icns}")
-            else:
-                print(f"WARNUNG: macOS icon.icns nicht gefunden unter: {icon_path_icns}")
-        else: # Windows und andere verwenden .ico
-            if os.path.exists(icon_path_ico):
-                app.setWindowIcon(QIcon(icon_path_ico)) # HIER IST DIE WICHTIGE ÄNDERUNG
-                print(f"DEBUG: Windows QApplication icon geladen von: {icon_path_ico}")
-            else:
-                print(f"WARNUNG: Windows icon.ico nicht gefunden unter: {icon_path_ico}")
+        # KORRIGIERT: KEIN setWindowIcon HIER. Die QApplication wird es handhaben.
+        # Entferne die PySide-Anweisung, damit das von PyInstaller eingebettete Icon Vorrang hat.
+        # Das Problem liegt nicht darin, dass die Datei nicht gefunden wird, sondern wie Windows mit dem Laufzeit-Icon umgeht.
+        # icon_path_ico = os.path.join(get_base_path(), "icon.ico")
+        # icon_path_icns = os.path.join(get_base_path(), "icon.icns")
+        # app = QApplication.instance()
+        # if sys.platform == "darwin": 
+        #     if os.path.exists(icon_path_icns):
+        #         app.setWindowIcon(QIcon(icon_path_icns))
+        #         print(f"DEBUG: macOS QApplication icon geladen von: {icon_path_icns}")
+        #     else:
+        #         print(f"WARNUNG: macOS icon.icns nicht gefunden unter: {icon_path_icns}")
+        # else:
+        #     if os.path.exists(icon_path_ico):
+        #         # Dies ist die Zeile, die zu Problemen unter Windows führen kann
+        #         # self.setWindowIcon(QIcon(icon_path_ico)) 
+        #         print(f"DEBUG: Windows icon.ico sollte von PyInstaller eingebettet sein. Kein setWindowIcon im Code.")
+        #     else:
+        #         print(f"WARNUNG: Windows icon.ico nicht gefunden im PyInstaller-Bundle.")
 
         self.setAcceptDrops(True)
 
@@ -930,7 +931,7 @@ class DarkMarkApp(QMainWindow):
 
         try:
             self._load_pdf_into_state(self.state["original_pdf_paths"][0], "original_doc")
-            self.status_label.setText(f"Controller: {len(valid_pdf_paths)} PDF(s) {source_description} geladen.") # KORRIGIERT: Statusmeldung, um "Controller" zu nutzen
+            self.status_label.setText(f"Controller: {len(valid_pdf_paths)} PDF(s) {source_description} geladen.") 
         except Exception as e:
             QMessageBox.critical(self, "Ladefehler", f"Fehler beim Laden der PDF:\n{e}")
             self.status_label.setText(f"Fehler beim Laden.")
@@ -1073,7 +1074,7 @@ class DarkMarkApp(QMainWindow):
                 shutil.copy(current_preview_path, save_path)
                 self.status_label.setText(f"Gespeichert: {os.path.basename(save_path)}")
             except Exception as e:
-                QMessageBox.critical(self, "Speicherfehler", f"Fehler beim Speichern:\n{e}")
+                QMessageBox.critical(self, "Speicherfehler", f"Ein Fehler ist aufgetreten:\n{e}")
 
     def redact_all_pdfs_batch(self):
         if not self.state["original_pdf_paths"]:
