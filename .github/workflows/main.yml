@@ -156,22 +156,23 @@ jobs:
     - name: Prepare Windows Release Artifact
       if: runner.os == 'Windows'
       id: prepare_win
-      shell: powershell
+      shell: bash
       run: |
-        $APP_VERSION = "${{ steps.get_version.outputs.VERSION || 'dev' }}"
-        $SOURCE_PATH = "dist/DarkMark" 
-        $ARTIFACT_NAME = "DarkMark-v$($APP_VERSION)-windows.zip"
+        APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        SOURCE_PATH="dist/DarkMark" 
+        ARTIFACT_NAME="DarkMark-v${APP_VERSION}-windows.zip"
         
         # Prüfen ob der Quellordner existiert
-        if (Test-Path $SOURCE_PATH) {
-          Compress-Archive -Path $SOURCE_PATH -DestinationPath $ARTIFACT_NAME -Force
+        if [ -d "$SOURCE_PATH" ]; then
+          # Verwende 7z für Windows (ist auf GitHub Actions verfügbar)
+          7z a "$ARTIFACT_NAME" "$SOURCE_PATH/*"
           echo "✓ Windows artifact created: $ARTIFACT_NAME"
-        } else {
-          Write-Error "Source path not found: $SOURCE_PATH"
+        else
+          echo "Error: Source path not found: $SOURCE_PATH"
           exit 1
-        }
+        fi
         
-        echo "ARTIFACT_NAME=$ARTIFACT_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
 
     - name: Prepare macOS Release Artifact
       if: runner.os == 'macOS'
