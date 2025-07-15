@@ -381,7 +381,7 @@ class DarkMarkApp(QMainWindow):
         self.setMinimumSize(1000, 700)
 
         self._set_macos_style_with_fallback()
-        self.setWindowIcon(qta.icon('fa5s.user-secret', color='#E0E1E1'))
+        #self.setWindowIcon(qta.icon('fa5s.user-secret', color='#E0E1E1'))
 
         self.setAcceptDrops(True)
 
