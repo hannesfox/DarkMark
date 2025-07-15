@@ -338,7 +338,7 @@ class DrawingCanvas(QLabel):
         if self.main_app.state["template_canvas_panning"] and event.button() == Qt.MouseButton.MiddleButton:
             self.main_app.state["template_canvas_panning"] = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
-        elif event.button() == Qt.MouseButton.LeftButton:
+        elif self.main_app.state["template_canvas_drawing"] and event.button() == Qt.MouseButton.LeftButton:
             self.main_app.state["template_canvas_drawing"] = False
             self.main_app.state["template_canvas_end_point_orig"] = self.map_widget_to_image(pos)
 
@@ -364,28 +364,25 @@ class DarkMarkApp(QMainWindow):
         self.setMinimumSize(1000, 700)
 
         self._set_macos_style_with_fallback()
-        # KORRIGIERT: Setze das Fenster-Icon explizit aus der eingebetteten .ico-Datei
+        # KORRIGIERT: Setze das Fenster-Icon explizit FÜR DIE QAPP ANSTATT QMAINWINDOW, um Konsistenz zu erzwingen
+        # Dies ist der robusteste Weg, damit Windows das Icon korrekt anzeigt.
         icon_path_ico = os.path.join(get_base_path(), "icon.ico")
+        icon_path_icns = os.path.join(get_base_path(), "icon.icns") # Für macOS, auch wenn es dort nicht das Problem ist.
         
-        # Wichtig: Für Windows soll KEIN QIcon() gesetzt werden, wenn es von PyInstaller eingebettet wird
-        # Wenn wir es hier setzen, kann es zu Rendering-Problemen in der Taskleiste kommen.
-        # Auf macOS ist es oft sinnvoll, da .icns-Dateien komplexer sind und das OS sie erwartet.
+        # Versuche, das Icon auf App-Ebene zu setzen
+        app = QApplication.instance()
         if sys.platform == "darwin": # macOS verwendet .icns
-            icon_path_icns = os.path.join(get_base_path(), "icon.icns")
             if os.path.exists(icon_path_icns):
-                self.setWindowIcon(QIcon(icon_path_icns))
-                print(f"DEBUG: macOS WindowIcon geladen von: {icon_path_icns}")
+                app.setWindowIcon(QIcon(icon_path_icns))
+                print(f"DEBUG: macOS QApplication icon geladen von: {icon_path_icns}")
             else:
-                print(f"WARNUNG: macOS Icon nicht gefunden unter: {icon_path_icns}")
-        # else: # FÜR WINDOWS: Lass PyInstaller die Arbeit machen, setze HIER KEIN ICON
-        #     if os.path.exists(icon_path_ico):
-        #         # Dies führt oft zum Problem unter Windows, wenn es einbetten sollte.
-        #         # Daher entfernen wir es.
-        #         # self.setWindowIcon(QIcon(icon_path_ico)) 
-        #         print(f"DEBUG: Windows Icon sollte von PyInstaller eingebettet sein. Kein setWindowIcon im Code.")
-        #     else:
-        #         print(f"WARNUNG: Windows Icon (icon.ico) nicht gefunden im PyInstaller-Bundle.")
-
+                print(f"WARNUNG: macOS icon.icns nicht gefunden unter: {icon_path_icns}")
+        else: # Windows und andere verwenden .ico
+            if os.path.exists(icon_path_ico):
+                app.setWindowIcon(QIcon(icon_path_ico)) # HIER IST DIE WICHTIGE ÄNDERUNG
+                print(f"DEBUG: Windows QApplication icon geladen von: {icon_path_ico}")
+            else:
+                print(f"WARNUNG: Windows icon.ico nicht gefunden unter: {icon_path_ico}")
 
         self.setAcceptDrops(True)
 
@@ -933,7 +930,7 @@ class DarkMarkApp(QMainWindow):
 
         try:
             self._load_pdf_into_state(self.state["original_pdf_paths"][0], "original_doc")
-            self.status_label.setText(f"{len(valid_pdf_paths)} PDF(s) {source_description} geladen.")
+            self.status_label.setText(f"Controller: {len(valid_pdf_paths)} PDF(s) {source_description} geladen.") # KORRIGIERT: Statusmeldung, um "Controller" zu nutzen
         except Exception as e:
             QMessageBox.critical(self, "Ladefehler", f"Fehler beim Laden der PDF:\n{e}")
             self.status_label.setText(f"Fehler beim Laden.")
@@ -1076,7 +1073,7 @@ class DarkMarkApp(QMainWindow):
                 shutil.copy(current_preview_path, save_path)
                 self.status_label.setText(f"Gespeichert: {os.path.basename(save_path)}")
             except Exception as e:
-                QMessageBox.critical(self, "Speicherfehler", f"Ein Fehler ist aufgetreten:\n{e}")
+                QMessageBox.critical(self, "Speicherfehler", f"Fehler beim Speichern:\n{e}")
 
     def redact_all_pdfs_batch(self):
         if not self.state["original_pdf_paths"]:
