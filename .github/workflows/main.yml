@@ -1,6 +1,5 @@
 # .github/workflows/main.yml
 # Finale Version: Erstellt einen Ordner (.exe + Abhängigkeiten) für Windows und ein Standard .app-Bundle für macOS
-# Verbesserte Windows-Icon-Behandlung
 
 name: Build and Release DarkMark Application
 
@@ -33,34 +32,55 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --no-cache-dir pyinstaller==6.8.0
+        # Installiere Pillow explizit für die Icon-Generierung, falls es nicht schon in requirements.txt ist
+        pip install --no-cache-dir Pillow # Sicherstellen, dass Pillow für ImageMagick Konvertierung verfügbar ist (obwohl ImageMagick es selbst macht, schadet nicht)
         pip install --no-cache-dir -r requirements.txt
       timeout-minutes: 10
+
+    # NEU: Schritt zur Generierung der Plattform-spezifischen Icons
+    - name: Generate Platform Icons from assets/logo.png
+      run: |
+        # Separator für PyInstaller --add-data
+        DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
+
+        # Generiere Windows .ico
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          # Installiere ImageMagick über Chocolatey
+          choco install imagemagick --no-progress
+          # Konvertiere PNG zu ICO mit allen gängigen Größen
+          # -define icon:autoresize=... erstellt alle diese Größen innerhalb der ICO-Datei
+          magick convert assets/logo.png -define icon:autoresize=256,128,64,48,32,16 icon.ico
+          echo "DEBUG: icon.ico created for Windows."
+        fi
+
+        # Generiere macOS .icns
+        if [ "$RUNNER_OS" == "macOS" ]; then
+          mkdir icon.iconset
+          # Erstelle alle benötigten PNG-Größen für .icns
+          # sips -z <Breite> <Höhe> <Input> --out <Output>
+          sips -z 16 16 assets/logo.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32 assets/logo.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 assets/logo.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64 assets/logo.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 assets/logo.png --out icon.iconset/icon_64x64.png
+          sips -z 256 256 assets/logo.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 assets/logo.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 assets/logo.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 assets/logo.png --out icon.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/logo.png --out icon.iconset/icon_512x512@2x.png # Optional: macOS Monterey+
+          
+          # Erstelle .icns aus dem .iconset Ordner
+          iconutil -c icns icon.iconset -o icon.icns
+          echo "DEBUG: icon.icns created for macOS."
+          rm -r icon.iconset # Aufräumen des temporären Ordners
+        fi
+      shell: bash # Für plattformübergreifende Kommandos, choco wird auch hier ausgeführt.
+
 
     - name: Extract version from tag
       id: get_version
       if: startsWith(github.ref, 'refs/tags/')
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-      shell: bash
-
-    # Debug-Schritt für Icon-Dateien
-    - name: Debug Icon Files
-      run: |
-        echo "Checking for icon files:"
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          if [ -f "icon.ico" ]; then
-            echo "✓ icon.ico found"
-            ls -la icon.ico
-          else
-            echo "✗ icon.ico NOT found"
-          fi
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          if [ -f "icon.icns" ]; then
-            echo "✓ icon.icns found"
-            ls -la icon.icns
-          else
-            echo "✗ icon.icns NOT found"
-          fi
-        fi
       shell: bash
 
     - name: Build Application with PyInstaller
@@ -71,7 +91,6 @@ jobs:
         
         DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
         
-        # NEU: Argumente als Array für robuste Übergabe an PyInstaller
         args=(
           --noconfirm
           main.py
@@ -84,95 +103,41 @@ jobs:
           --hidden-import "PIL.ImageQt"
         )
 
-        # Windows-spezifische Konfiguration
+        # Icon hinzufügen, falls die Datei existiert (wird jetzt durch den Generierungsschritt sichergestellt)
         if [ "$RUNNER_OS" == "Windows" ]; then
-          args+=(--windowed)
-          # Icon-Behandlung für Windows
-          if [ -f "icon.ico" ]; then
-            args+=(--icon "icon.ico")
-            echo "Adding Windows icon: icon.ico"
-          else
-            echo "WARNUNG: icon.ico nicht gefunden für Windows-Build."
-          fi
-          # Zusätzliche Windows-Optionen für bessere Icon-Behandlung
-          args+=(--add-binary "icon.ico;.")
-          args+=(--collect-all "PySide6")
+          args+=(--icon "icon.ico")
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          args+=(--icon "icon.icns")
         fi
 
-        # macOS-spezifische Konfiguration
-        if [ "$RUNNER_OS" == "macOS" ]; then
+        # --windowed Mode hinzufügen (unterdrückt Konsolenfenster)
+        if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
           args+=(--windowed)
-          if [ -f "icon.icns" ]; then
-            args+=(--icon "icon.icns")
-            echo "Adding macOS icon: icon.icns"
-          else
-            echo "WARNUNG: icon.icns nicht gefunden für macOS-Build."
-          fi
         fi
 
         # Führe PyInstaller mit dem erstellten Argument-Array aus
-        echo "Running PyInstaller with args: ${args[*]}"
         pyinstaller "${args[@]}"
       shell: bash
 
-    # Debugging-Schritt für Windows
-    - name: Debug Windows Build Output
-      if: runner.os == 'Windows'
-      run: |
-        echo "Contents of dist directory:"
-        ls -la dist/
-        echo "Checking if DarkMark.exe exists:"
-        if [ -f "dist/DarkMark/DarkMark.exe" ]; then
-          echo "✓ DarkMark.exe found"
-          ls -la "dist/DarkMark/DarkMark.exe"
-        else
-          echo "✗ DarkMark.exe NOT found"
-        fi
-        echo "Checking for icon files in dist:"
-        find dist/ -name "*.ico" -type f || echo "No .ico files found"
-      shell: bash
-
-    # Debugging-Schritt für macOS
-    - name: Debug macOS Build Output
+    # Debugging-Schritt für macOS, um den Inhalt des dist-Verzeichnisses zu überprüfen
+    - name: Debug PyInstaller Output on macOS
       if: runner.os == 'macOS'
       run: |
         echo "Contents of dist directory:"
         ls -R dist
-        echo "Checking DarkMark.app structure:"
-        if [ -d "dist/DarkMark.app" ]; then
-          echo "✓ DarkMark.app found"
-          ls -la "dist/DarkMark.app/Contents/"
-          if [ -f "dist/DarkMark.app/Contents/Resources/icon.icns" ]; then
-            echo "✓ Icon correctly embedded in app bundle"
-          else
-            echo "✗ Icon not found in app bundle"
-          fi
-        else
-          echo "✗ DarkMark.app NOT found"
-        fi
         echo "Done listing dist directory."
       shell: bash
 
     - name: Prepare Windows Release Artifact
       if: runner.os == 'Windows'
       id: prepare_win
-      shell: bash
+      shell: powershell
       run: |
-        APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
-        SOURCE_PATH="dist/DarkMark" 
-        ARTIFACT_NAME="DarkMark-v${APP_VERSION}-windows.zip"
-        
-        # Prüfen ob der Quellordner existiert
-        if [ -d "$SOURCE_PATH" ]; then
-          # Verwende 7z für Windows (ist auf GitHub Actions verfügbar)
-          7z a "$ARTIFACT_NAME" "$SOURCE_PATH/*"
-          echo "✓ Windows artifact created: $ARTIFACT_NAME"
-        else
-          echo "Error: Source path not found: $SOURCE_PATH"
-          exit 1
-        fi
-        
-        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+        $APP_VERSION = "${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        $SOURCE_PATH = "dist/DarkMark" 
+        $ARTIFACT_NAME = "DarkMark-v$($APP_VERSION)-windows.zip"
+        Compress-Archive -Path $SOURCE_PATH -DestinationPath $ARTIFACT_NAME -Force
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
     - name: Prepare macOS Release Artifact
       if: runner.os == 'macOS'
@@ -181,15 +146,11 @@ jobs:
       run: |
         APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
         ARTIFACT_NAME="DarkMark-v${APP_VERSION}-macos.zip"
-        
-        # Zusätzliche Prüfung vor ditto
         if [ ! -d "dist/DarkMark.app" ]; then
           echo "Error: dist/DarkMark.app not found. PyInstaller build failed for macOS?"
-          exit 1 # Workflow beenden, wenn die App nicht gefunden wird
+          exit 1
         fi
-        
         ditto -c -k --sequesterRsrc --keepParent "dist/DarkMark.app" "${ARTIFACT_NAME}"
-        echo "✓ macOS artifact created: ${ARTIFACT_NAME}"
         echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
 
     - name: Upload Build Artifact
