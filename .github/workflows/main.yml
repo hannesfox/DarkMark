@@ -32,50 +32,50 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --no-cache-dir pyinstaller==6.8.0
-        # Installiere Pillow explizit für die Icon-Generierung, falls es nicht schon in requirements.txt ist
-        pip install --no-cache-dir Pillow # Sicherstellen, dass Pillow für ImageMagick Konvertierung verfügbar ist (obwohl ImageMagick es selbst macht, schadet nicht)
+        pip install --no-cache-dir Pillow # Sicherstellen, dass Pillow für sips/magick Konvertierung verfügbar ist
         pip install --no-cache-dir -r requirements.txt
       timeout-minutes: 10
 
     # NEU: Schritt zur Generierung der Plattform-spezifischen Icons
     - name: Generate Platform Icons from assets/logo.png
       run: |
-        # Separator für PyInstaller --add-data
-        DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
-
+        ICON_SOURCE_PNG="assets/logo.png"
+        
         # Generiere Windows .ico
         if [ "$RUNNER_OS" == "Windows" ]; then
-          # Installiere ImageMagick über Chocolatey
           choco install imagemagick --no-progress
-          # Konvertiere PNG zu ICO mit allen gängigen Größen
-          # -define icon:autoresize=... erstellt alle diese Größen innerhalb der ICO-Datei
-          magick convert assets/logo.png -define icon:autoresize=256,128,64,48,32,16 icon.ico
+          # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 256x256) für ICO
+          magick "$ICON_SOURCE_PNG" -resize 256x256 scaled_icon_source.png
+          # Konvertiere das skalierte PNG zu ICO mit allen gängigen Größen
+          magick convert scaled_icon_source.png -define icon:autoresize=256,128,64,48,32,16 icon.ico
           echo "DEBUG: icon.ico created for Windows."
         fi
 
         # Generiere macOS .icns
         if [ "$RUNNER_OS" == "macOS" ]; then
           mkdir icon.iconset
-          # Erstelle alle benötigten PNG-Größen für .icns
-          # sips -z <Breite> <Höhe> <Input> --out <Output>
-          sips -z 16 16 assets/logo.png --out icon.iconset/icon_16x16.png
-          sips -z 32 32 assets/logo.png --out icon.iconset/icon_16x16@2x.png
-          sips -z 32 32 assets/logo.png --out icon.iconset/icon_32x32.png
-          sips -z 64 64 assets/logo.png --out icon.iconset/icon_32x32@2x.png
-          sips -z 128 128 assets/logo.png --out icon.iconset/icon_64x64.png
-          sips -z 256 256 assets/logo.png --out icon.iconset/icon_128x128@2x.png
-          sips -z 256 256 assets/logo.png --out icon.iconset/icon_256x256.png
-          sips -z 512 512 assets/logo.png --out icon.iconset/icon_256x256@2x.png
-          sips -z 512 512 assets/logo.png --out icon.iconset/icon_512x512.png
-          sips -z 1024 1024 assets/logo.png --out icon.iconset/icon_512x512@2x.png # Optional: macOS Monterey+
+          # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 512x512) für ICNS (höhere Auflösung für Retina)
+          sips -z 512 512 "$ICON_SOURCE_PNG" --out scaled_icon_source.png
+          
+          # Erstelle alle benötigten PNG-Größen für .icns aus dem skalierten Bild
+          sips -z 16 16 scaled_icon_source.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64 scaled_icon_source.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 scaled_icon_source.png --out icon.iconset/icon_64x64.png
+          sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 scaled_icon_source.png --out icon.iconset/icon_256x256@2x.png
+          # sips -z 512 512 scaled_icon_source.png --out icon.iconset/icon_512x512.png # 512x512 ohne @2x
+          sips -z 1024 1024 scaled_icon_source.png --out icon.iconset/icon_512x512@2x.png # 512x512@2x = 1024x1024px
           
           # Erstelle .icns aus dem .iconset Ordner
           iconutil -c icns icon.iconset -o icon.icns
           echo "DEBUG: icon.icns created for macOS."
           rm -r icon.iconset # Aufräumen des temporären Ordners
         fi
-      shell: bash # Für plattformübergreifende Kommandos, choco wird auch hier ausgeführt.
-
+        rm scaled_icon_source.png 2>/dev/null || true # Temporäres skaliertes Bild aufräumen
+      shell: bash
 
     - name: Extract version from tag
       id: get_version
@@ -96,14 +96,14 @@ jobs:
           main.py
           --name "DarkMark"
           --clean
-          --add-data "assets${DATA_SEPARATOR}assets" # 'assets' Ordner muss existieren
+          --add-data "assets${DATA_SEPARATOR}assets" 
           --hidden-import "PySide6.QtSvg"
           --hidden-import "PySide6.QtNetwork"
           --hidden-import "qtawesome"
           --hidden-import "PIL.ImageQt"
         )
 
-        # Icon hinzufügen, falls die Datei existiert (wird jetzt durch den Generierungsschritt sichergestellt)
+        # Icon hinzufügen
         if [ "$RUNNER_OS" == "Windows" ]; then
           args+=(--icon "icon.ico")
         elif [ "$RUNNER_OS" == "macOS" ]; then
@@ -115,11 +115,9 @@ jobs:
           args+=(--windowed)
         fi
 
-        # Führe PyInstaller mit dem erstellten Argument-Array aus
         pyinstaller "${args[@]}"
       shell: bash
 
-    # Debugging-Schritt für macOS, um den Inhalt des dist-Verzeichnisses zu überprüfen
     - name: Debug PyInstaller Output on macOS
       if: runner.os == 'macOS'
       run: |
