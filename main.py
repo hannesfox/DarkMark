@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF
 # QIcon bleibt importiert
-from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, QPen, QWheelEvent, QImage, QIcon
+from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, QPen, QWheelEvent, QImage, QIcon, QKeyEvent
 
 
 # qtawesome für moderne Icons importieren
@@ -360,31 +360,13 @@ class DrawingCanvas(QLabel):
 class DarkMarkApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DarkMark 1.1.0")
+        self.setWindowTitle("DarkMark 1.1.4")
         self.setGeometry(100, 100, 1400, 900)
         self.setMinimumSize(1000, 700)
 
         self._set_macos_style_with_fallback()
-        # KORRIGIERT: KEIN setWindowIcon HIER. Die QApplication wird es handhaben.
-        # Entferne die PySide-Anweisung, damit das von PyInstaller eingebettete Icon Vorrang hat.
-        # Das Problem liegt nicht darin, dass die Datei nicht gefunden wird, sondern wie Windows mit dem Laufzeit-Icon umgeht.
-        # icon_path_ico = os.path.join(get_base_path(), "icon.ico")
-        # icon_path_icns = os.path.join(get_base_path(), "icon.icns")
-        # app = QApplication.instance()
-        # if sys.platform == "darwin":
-        #     if os.path.exists(icon_path_icns):
-        #         app.setWindowIcon(QIcon(icon_path_icns))
-        #         print(f"DEBUG: macOS QApplication icon geladen von: {icon_path_icns}")
-        #     else:
-        #         print(f"WARNUNG: macOS icon.icns nicht gefunden unter: {icon_path_icns}")
-        # else:
-        #     if os.path.exists(icon_path_ico):
-        #         # Dies ist die Zeile, die zu Problemen unter Windows führen kann
-        #         # self.setWindowIcon(QIcon(icon_path_ico))
-        #         print(f"DEBUG: Windows icon.ico sollte von PyInstaller eingebettet sein. Kein setWindowIcon im Code.")
-        #     else:
-        #         print(f"WARNUNG: Windows icon.ico nicht gefunden im PyInstaller-Bundle.")
 
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
 
         self.state = {
@@ -422,6 +404,11 @@ class DarkMarkApp(QMainWindow):
         self.preview_batch_total = 0
         self.preview_batch_processed = 0
         self.current_temp_preview_dir = None
+
+        # NEU: Für das "dark"-Schlüsselwort-Trigger
+        self._keyword_trigger = "dark"
+        self._key_buffer = ""
+        self._max_key_buffer_len = len(self._keyword_trigger) + 5 # Puffer etwas größer als das Schlüsselwort
 
         self.main_widget = self._create_main_app_widget()
         self.setCentralWidget(self.main_widget)
@@ -688,10 +675,11 @@ class DarkMarkApp(QMainWindow):
             QLineEdit.Password # Macht die Eingabe verdeckt
         )
 
-        if ok and password == "Sessel":
+        if ok and password == "sessel":
             self.switch_mode("template_creation")
         elif ok: # OK gedrückt, aber Passwort falsch
             QMessageBox.warning(self, "Falsches Passwort", "Das eingegebene Passwort ist nicht korrekt.")
+        self.setFocus() # Fokus zurücksetzen
 
 
     @Slot(str)
@@ -724,6 +712,7 @@ class DarkMarkApp(QMainWindow):
             self.reset_template_canvas()
 
         self.update_ui()
+        self.setFocus() # Fokus nach Moduswechsel zurücksetzen
 
 
     # ==========================================================================
@@ -937,18 +926,21 @@ class DarkMarkApp(QMainWindow):
             self.status_label.setText(f"Fehler beim Laden.")
             self.clear_all_docs_except_templates()
         self.update_ui()
+        self.setFocus() # Fokus nach dem Laden zurücksetzen
 
 
     def pick_single_pdf(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "PDF-Datei auswählen", "", "PDF-Dateien (*.pdf)")
         if filepath:
             self._handle_pdf_paths([filepath], "manuell")
+        self.setFocus() # Fokus nach Dialog zurücksetzen
 
     def pick_folder(self):
         folderpath = QFileDialog.getExistingDirectory(self, "Ordner mit PDFs auswählen")
         if folderpath:
             pdf_files = [os.path.join(folderpath, f) for f in os.listdir(folderpath) if f.lower().endswith('.pdf')]
             self._handle_pdf_paths(pdf_files, "aus Ordner")
+        self.setFocus() # Fokus nach Dialog zurücksetzen
 
 
     def prev_page(self):
@@ -1053,6 +1045,7 @@ class DarkMarkApp(QMainWindow):
                 self.clear_all_docs_except_templates()
 
             self.update_ui()
+            self.setFocus() # Fokus nach Batch-Vorschau zurücksetzen
 
 
     def save_redacted_preview(self):
@@ -1075,6 +1068,8 @@ class DarkMarkApp(QMainWindow):
                 self.status_label.setText(f"Gespeichert: {os.path.basename(save_path)}")
             except Exception as e:
                 QMessageBox.critical(self, "Speicherfehler", f"Ein Fehler ist aufgetreten:\n{e}")
+        self.setFocus() # Fokus nach Dialog zurücksetzen
+
 
     def redact_all_pdfs_batch(self):
         if not self.state["original_pdf_paths"]:
@@ -1085,7 +1080,9 @@ class DarkMarkApp(QMainWindow):
             return
 
         output_folder = QFileDialog.getExistingDirectory(self, "Ausgabeordner für geschwärzte PDFs wählen")
-        if not output_folder: return
+        if not output_folder:
+            self.setFocus() # Fokus zurück, wenn Dialog abgebrochen
+            return
 
         self.state["is_processing"] = True
         if self.state["is_in_preview_mode"]:
@@ -1132,6 +1129,7 @@ class DarkMarkApp(QMainWindow):
 
             self.clear_all_docs()
             self.update_ui()
+            self.setFocus() # Fokus nach Stapelverarbeitung zurücksetzen
 
     def closeEvent(self, event):
         if self.state["is_processing"]:
@@ -1229,6 +1227,7 @@ class DarkMarkApp(QMainWindow):
             self.status_label.setText("Vorschau-Modus verlassen. Keine Original-PDFs mehr vorhanden.")
 
         self.update_ui()
+        self.setFocus() # Fokus nach Moduswechsel zurücksetzen
 
     # ==========================================================================
     #     Templaterstellungs-Logik (Korrekturen und Konsistenz)
@@ -1239,6 +1238,7 @@ class DarkMarkApp(QMainWindow):
             self, "PDF-Datei zum Markieren auswählen", "", "PDF-Dateien (*.pdf)"
         )
         if not file_path:
+            self.setFocus() # Fokus zurücksetzen, wenn Dialog abgebrochen
             return
 
         try:
@@ -1261,6 +1261,7 @@ class DarkMarkApp(QMainWindow):
             self.state["template_canvas_pixmap"] = None
             self.reset_template_canvas_view_and_rects()
             self.update_ui()
+        self.setFocus() # Fokus nach Aktion zurücksetzen
 
 
     def reset_template_canvas_view_and_rects(self):
@@ -1362,15 +1363,18 @@ class DarkMarkApp(QMainWindow):
             self.state["template_canvas_pixmap"] = None
             self.template_canvas.update()
             self.update_ui()
-
         except Exception as e:
             QMessageBox.critical(self, "Fehler beim Speichern", f"Ein Fehler ist aufgetreten:\n{e}")
+        self.setFocus() # Fokus nach Aktion zurücksetzen
+
 
     def resizeEvent(self, event):
         """Wenn Fenstergröße geändert wird, Ansicht neu zentrieren."""
         super().resizeEvent(event)
         if self.state["current_mode"] == "template_creation":
             self.reset_template_canvas_view_and_rects()
+        # self.setFocus() # Fokus nach Resize zurücksetzen (optional, kann aber zu Flackern führen)
+
 
     # NEU: Methode zum Neuladen der Templates aus dem Benutzerverzeichnis
     @Slot()
@@ -1385,6 +1389,8 @@ class DarkMarkApp(QMainWindow):
         QMessageBox.information(self, "Templates neu geladen",
                                 f"{len(self.templates_data)} Templates aus '{USER_TEMPLATES_PATH}' erfolgreich geladen.")
         self.update_ui()
+        self.setFocus() # Fokus nach Aktion zurücksetzen
+
 
     # NEU: Methode zum Importieren von Templates aus einem Ordner in den USER_TEMPLATES_PATH
     @Slot()
@@ -1395,6 +1401,7 @@ class DarkMarkApp(QMainWindow):
 
         source_dir = QFileDialog.getExistingDirectory(self, "Ordner mit Templates zum Importieren auswählen")
         if not source_dir:
+            self.setFocus() # Fokus zurücksetzen, wenn Dialog abgebrochen
             return
 
         imported_count = 0
@@ -1409,7 +1416,6 @@ class DarkMarkApp(QMainWindow):
                 src_path = os.path.join(source_dir, filename)
                 dest_path = os.path.join(USER_TEMPLATES_PATH, filename)
                 try:
-                    # Kopieren, überschreibt existierende Dateien mit gleichem Namen
                     shutil.copy2(src_path, dest_path)
                     imported_count += 1
                 except Exception as e:
@@ -1420,6 +1426,7 @@ class DarkMarkApp(QMainWindow):
         QMessageBox.information(self, "Templates importiert",
                                 f"{imported_count} Templates erfolgreich importiert.\n{skipped_count} Templates konnten nicht importiert werden (z.B. Fehler beim Kopieren, Schreibrechte, etc.).")
         self.reload_templates_data_from_disk() # Templates-Liste in der App aktualisieren
+        self.setFocus() # Fokus nach Aktion zurücksetzen
 
 
     # NEU: Methode zum Sichern aller Templates im Benutzerverzeichnis
@@ -1435,6 +1442,7 @@ class DarkMarkApp(QMainWindow):
 
         dest_dir = QFileDialog.getExistingDirectory(self, "Ordner zum Sichern der Templates auswählen")
         if not dest_dir:
+            self.setFocus() # Fokus zurücksetzen, wenn Dialog abgebrochen
             return
 
         backed_up_count = 0
@@ -1455,6 +1463,7 @@ class DarkMarkApp(QMainWindow):
         QMessageBox.information(self, "Templates gesichert",
                                 f"{backed_up_count} Templates erfolgreich gesichert im Ordner:\n'{dest_dir}'\n{skipped_count} Templates konnten nicht gesichert werden.")
         self.update_ui() # UI aktualisieren, falls sich Button-Zustände ändern
+        self.setFocus() # Fokus nach Aktion zurücksetzen
 
     # NEU: Methode zum Löschen aller Templates im Benutzerverzeichnis
     @Slot()
@@ -1491,6 +1500,69 @@ class DarkMarkApp(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Fehler beim Löschen", f"Ein Fehler ist aufgetreten:\n{e}")
         self.update_ui()
+        self.setFocus() # Fokus nach Aktion zurücksetzen
+
+
+    # NEU: keyPressEvent Methode für Tastaturnavigation und Schlüsselwort-Trigger
+    def keyPressEvent(self, event: QKeyEvent):
+        # Wenn eine Verarbeitung läuft, alle Tastaturereignisse ignorieren
+        if self.state["is_processing"]:
+            super().keyPressEvent(event)
+            return
+
+        # Den getippten Text (Zeichen) holen und in Kleinbuchstaben umwandeln
+        key_text = event.text().lower()
+
+        # --- 1. Schlüsselwort "dark" Trigger (nur im Redaktionsmodus, ohne Modifier) ---
+        if self.state["current_mode"] == "redaction" and key_text and not event.modifiers():
+            self._key_buffer += key_text
+            # Puffer auf maximale Länge kürzen
+            if len(self._key_buffer) > self._max_key_buffer_len:
+                self._key_buffer = self._key_buffer[-self._max_key_buffer_len:]
+
+            if self._key_buffer.endswith(self._keyword_trigger):
+                print(f"DEBUG: Schlüsselwort '{self._keyword_trigger}' erkannt! Starte Vorschau-Schwärzung.")
+                # Prüfen, ob der Button aktiv ist, bevor er geklickt wird
+                if self.redact_preview_button.isEnabled():
+                    self.redact_preview_button.click()
+                else:
+                    print("INFO: 'Alle PDFs schwärzen (Vorschau)'-Button ist nicht aktiv, Aktion nicht ausgeführt.")
+                    QMessageBox.information(self, "Hinweis", "Der 'Alle PDFs schwärzen (Vorschau)'-Button ist derzeit nicht aktiv (z.B. keine PDFs geladen oder keine Templates gefunden).")
+
+                self._key_buffer = "" # Puffer zurücksetzen, um sofortiges erneutes Auslösen zu verhindern
+                event.accept() # Event als behandelt markieren
+                return # Weitere Tastenprüfung für dieses Event beenden
+
+        # --- 2. Tastaturnavigation für PDF und Seite (nur im Redaktionsmodus) ---
+        if self.state["current_mode"] == "redaction":
+            # PDF-Navigation mit 'b' (zurück) und 'n' (vorwärts)
+            if event.modifiers() == Qt.KeyboardModifier.NoModifier:
+                if event.key() == Qt.Key.Key_B:
+                    print("DEBUG: 'b' gedrückt - Navigiere zu vorherigem PDF")
+                    self.prev_pdf()
+                    event.accept()
+                    return
+                elif event.key() == Qt.Key.Key_N:
+                    print("DEBUG: 'n' gedrückt - Navigiere zu nächstem PDF")
+                    self.next_pdf()
+                    event.accept()
+                    return
+            # Seiten-Navigation mit Strg + Pfeil links/rechts
+            elif event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                if event.key() == Qt.Key.Key_Left:
+                    print("DEBUG: Strg+Links gedrückt - Navigiere zu vorheriger Seite")
+                    self.prev_page()
+                    event.accept()
+                    return
+                elif event.key() == Qt.Key.Key_Right:
+                    print("DEBUG: Strg+Rechts gedrückt - Navigiere zu nächster Seite")
+                    self.next_page()
+                    event.accept()
+                    return
+
+        # --- 3. Standard-Verhalten für alle anderen Tasten/Modi ---
+        # Wenn das Event hier noch nicht 'accepted' wurde, an die Basisklasse weiterleiten.
+        super().keyPressEvent(event)
 
 
 if __name__ == "__main__":
