@@ -12,11 +12,11 @@ from appdirs import user_data_dir
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QProgressBar, QFrame, QGroupBox,
-    QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit 
+    QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit
 )
-from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF 
+from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF
 # QIcon bleibt importiert
-from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, QPen, QWheelEvent, QImage, QIcon 
+from PySide6.QtGui import QPixmap, QFontDatabase, QDragEnterEvent, QDropEvent, QPalette, QColor, QMouseEvent, QPainter, QPen, QWheelEvent, QImage, QIcon
 
 
 # qtawesome für moderne Icons importieren
@@ -58,10 +58,10 @@ BASE_PATH = get_base_path()
 
 # Pfad für benutzerdefinierte Templates (immer beschreibbar)
 APP_NAME = "DarkMark"
-APP_AUTHOR = "JohannesGschwendtner" 
+APP_AUTHOR = "JohannesGschwendtner"
 USER_TEMPLATES_PATH = os.path.join(user_data_dir(APP_NAME, APP_AUTHOR), "darkmark_user_templates")
 
-MATCH_THRESHOLD = 0.6 
+MATCH_THRESHOLD = 0.6
 RENDER_DPI = 300
 
 
@@ -72,7 +72,7 @@ RENDER_DPI = 300
 # load_template_images lädt jetzt NUR noch aus user_template_dir
 def load_template_images(user_template_dir: str) -> List[Dict[str, Any]]:
     templates_data = []
-    
+
     # Sicherstellen, dass der Benutzer-Template-Ordner existiert
     if not os.path.exists(user_template_dir):
         try:
@@ -80,21 +80,21 @@ def load_template_images(user_template_dir: str) -> List[Dict[str, Any]]:
             print(f"DEBUG: Benutzer-Template-Ordner erstellt: {user_template_dir}")
         except OSError as e:
             print(f"WARNUNG: Konnte Benutzer-Template-Ordner nicht erstellen: {user_template_dir}: {e}")
-            return [] 
-            
+            return []
+
     if os.path.isdir(user_template_dir):
         for filename in os.listdir(user_template_dir):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
                 file_path = os.path.join(user_template_dir, filename)
                 try:
                     template_img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
-                    if template_img is None: 
+                    if template_img is None:
                         print(f"WARNUNG: Konnte Benutzer-Bild {filename} nicht als Template laden (cv2.imread gab None zurück).")
                         continue
                     templates_data.append({
                         "name": filename, "cv_image": template_img,
                         "width": template_img.shape[1], "height": template_img.shape[0],
-                        "source": "user" 
+                        "source": "user"
                     })
                 except Exception as e:
                     print(f"DEBUG: Fehler beim Laden von Benutzer-Template {file_path}: {e}")
@@ -126,7 +126,7 @@ def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshol
     mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
     pix = page.get_pixmap(matrix=mat, alpha=False)
     page_cv_img_gray = cv2.imdecode(np.frombuffer(pix.tobytes("png"), np.uint8), cv2.IMREAD_GRAYSCALE)
-    if page_cv_img_gray is None: 
+    if page_cv_img_gray is None:
         print(f"WARNUNG: Konnte Seite {page.number+1} nicht in Graustufenbild konvertieren.")
         return 0
     inv_mat = ~mat
@@ -135,7 +135,7 @@ def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshol
         if template_cv is None or template_cv.size == 0:
             print(f"WARNUNG: Leeres oder ungültiges Template übersprungen: {template['name']}")
             continue
-        
+
         if template_cv.shape[0] > page_cv_img_gray.shape[0] or template_cv.shape[1] > page_cv_img_gray.shape[1]:
             print(f"WARNUNG: Template {template['name']} ist größer als die Seite, übersprungen.")
             continue
@@ -145,11 +145,11 @@ def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshol
             locs = np.where(res >= threshold)
         except cv2.error as e:
             print(f"ERROR: cv2.matchTemplate failed for template {template['name']} on page {page.number+1}: {e}")
-            continue 
+            continue
 
         for pt in zip(*locs[::-1]):
             rect = fitz.Rect(pt[0], pt[1], pt[0] + template_cv.shape[1], pt[1] + template_cv.shape[0]) * inv_mat
-            
+
             page.add_redact_annot(rect, fill=(0, 0, 0))
             redacted_count += 1
             print(f"DEBUG: Found '{template['name']}' at {rect} on page {page.number+1}.")
@@ -171,7 +171,7 @@ class WorkerSignals(QObject):
     error = Signal(str)
     progress = Signal(str)
 
-class RedactionTask(QRunnable): 
+class RedactionTask(QRunnable):
     def __init__(self, input_path: str, output_path: str, templates: list):
         super().__init__()
         self.input_path = input_path
@@ -203,7 +203,7 @@ class RedactionTask(QRunnable):
             print(f"ERROR: RedactionTask failed for {os.path.basename(self.input_path)}: {e}")
             self.signals.error.emit(f"Fehler bei Vorschau '{os.path.basename(self.input_path)}': {e}")
 
-class PreviewRedactionTask(QRunnable): 
+class PreviewRedactionTask(QRunnable):
     def __init__(self, original_pdf_path: str, temp_output_dir: str, templates: list):
         super().__init__()
         self.original_pdf_path = original_pdf_path
@@ -216,7 +216,7 @@ class PreviewRedactionTask(QRunnable):
         try:
             name, ext = os.path.splitext(os.path.basename(self.original_pdf_path))
             temp_output_path = os.path.join(self.temp_output_dir, f"{name}_preview{ext}")
-            
+
             total_redactions = 0
             print(f"DEBUG: PreviewRedactionTask: Processing {os.path.basename(self.original_pdf_path)}...")
             with fitz.open(self.original_pdf_path) as doc:
@@ -237,7 +237,7 @@ class PreviewRedactionTask(QRunnable):
 
 
 # ==============================================================================
-#      DrawingCanvas für die Templaterstellung 
+#      DrawingCanvas für die Templaterstellung
 # ==============================================================================
 
 class DrawingCanvas(QLabel):
@@ -247,8 +247,8 @@ class DrawingCanvas(QLabel):
     Referenziert den Haupt-App-State für Bild, Rechtecke, Zoom/Pan-Status.
     """
 
-    def __init__(self, main_app_instance: 'DarkMarkApp'): 
-        super().__init__(main_app_instance) 
+    def __init__(self, main_app_instance: 'DarkMarkApp'):
+        super().__init__(main_app_instance)
         self.main_app = main_app_instance
         self.setMouseTracking(True)
         self.setStyleSheet("background-color: #333; border: 1px solid gray;")
@@ -345,7 +345,7 @@ class DrawingCanvas(QLabel):
 
             new_rect = QRectF(self.main_app.state["template_canvas_start_point_orig"], self.main_app.state["template_canvas_end_point_orig"]).normalized()
             # Fester Pixelwert für minimale Größe im Canvas-Koordinatensystem
-            if new_rect.width() > 5 and new_rect.height() > 5: 
+            if new_rect.width() > 5 and new_rect.height() > 5:
                 self.main_app.state["template_canvas_rects"].append(new_rect)
                 self.main_app.save_template_button.setEnabled(True)
                 self.main_app.undo_template_button.setEnabled(True)
@@ -371,7 +371,7 @@ class DarkMarkApp(QMainWindow):
         # icon_path_ico = os.path.join(get_base_path(), "icon.ico")
         # icon_path_icns = os.path.join(get_base_path(), "icon.icns")
         # app = QApplication.instance()
-        # if sys.platform == "darwin": 
+        # if sys.platform == "darwin":
         #     if os.path.exists(icon_path_icns):
         #         app.setWindowIcon(QIcon(icon_path_icns))
         #         print(f"DEBUG: macOS QApplication icon geladen von: {icon_path_icns}")
@@ -380,7 +380,7 @@ class DarkMarkApp(QMainWindow):
         # else:
         #     if os.path.exists(icon_path_ico):
         #         # Dies ist die Zeile, die zu Problemen unter Windows führen kann
-        #         # self.setWindowIcon(QIcon(icon_path_ico)) 
+        #         # self.setWindowIcon(QIcon(icon_path_ico))
         #         print(f"DEBUG: Windows icon.ico sollte von PyInstaller eingebettet sein. Kein setWindowIcon im Code.")
         #     else:
         #         print(f"WARNUNG: Windows icon.ico nicht gefunden im PyInstaller-Bundle.")
@@ -390,26 +390,26 @@ class DarkMarkApp(QMainWindow):
         self.state = {
             # --- Zustand für Schwärzungsmodus ---
             "current_mode": "redaction", # Startet immer im Schwärzungsmodus
-            "original_doc": None,        
-            "redacted_doc": None,        
-            "original_pdf_paths": [],    
-            "preview_pdf_paths": [],     
+            "original_doc": None,
+            "redacted_doc": None,
+            "original_pdf_paths": [],
+            "preview_pdf_paths": [],
             "current_pdf_index": 0,
-            "current_page_num": 0,       
+            "current_page_num": 0,
             "is_processing": False,
-            "is_in_preview_mode": False, 
+            "is_in_preview_mode": False,
 
             # --- Zustand für Templaterstellungsmodus ---
-            "template_canvas_pdf_path": None, 
-            "template_canvas_pixmap": None,   
-            "template_canvas_rects": [],      
-            "template_canvas_zoom": 1.0,      
-            "template_canvas_pan_offset": QPointF(0, 0), 
-            "template_canvas_panning": False, 
-            "template_canvas_last_pan_point": QPointF(), 
-            "template_canvas_drawing": False, 
-            "template_canvas_start_point_orig": QPointF(), 
-            "template_canvas_end_point_orig": QPointF(),   
+            "template_canvas_pdf_path": None,
+            "template_canvas_pixmap": None,
+            "template_canvas_rects": [],
+            "template_canvas_zoom": 1.0,
+            "template_canvas_pan_offset": QPointF(0, 0),
+            "template_canvas_panning": False,
+            "template_canvas_last_pan_point": QPointF(),
+            "template_canvas_drawing": False,
+            "template_canvas_start_point_orig": QPointF(),
+            "template_canvas_end_point_orig": QPointF(),
         }
         self.templates_data = load_template_images(USER_TEMPLATES_PATH)
         self.thread_pool = QThreadPool()
@@ -417,11 +417,11 @@ class DarkMarkApp(QMainWindow):
 
         self.batch_files_to_process = 0
         self.batch_files_processed = 0
-        self.batch_new_files = [] 
+        self.batch_new_files = []
 
         self.preview_batch_total = 0
         self.preview_batch_processed = 0
-        self.current_temp_preview_dir = None 
+        self.current_temp_preview_dir = None
 
         self.main_widget = self._create_main_app_widget()
         self.setCentralWidget(self.main_widget)
@@ -431,7 +431,7 @@ class DarkMarkApp(QMainWindow):
     def _set_macos_style_with_fallback(self):
         app = QApplication.instance()
         macos_style_found = False
-        if sys.platform == "darwin": 
+        if sys.platform == "darwin":
             for style_key in QStyleFactory.keys():
                 if style_key == "Macintosh":
                     app.setStyle(QStyleFactory.create("Macintosh"))
@@ -445,7 +445,7 @@ class DarkMarkApp(QMainWindow):
             except Exception:
                 print("INFO: Fusion-Stil nicht verfügbar. Verwende Systemstandard-Stil.")
         app.setPalette(app.style().standardPalette())
-        app.setStyleSheet("") 
+        app.setStyleSheet("")
 
     def _create_main_app_widget(self) -> QWidget:
         main_widget = QWidget()
@@ -469,7 +469,7 @@ class DarkMarkApp(QMainWindow):
         if os.path.exists(logo_path):
             logo_pixmap = QPixmap(logo_path)
             icon_label.setPixmap(logo_pixmap.scaled(
-                60, 60,
+                120, 120,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             ))
@@ -478,7 +478,7 @@ class DarkMarkApp(QMainWindow):
             icon_label.setPixmap(qta.icon('fa5s.user-secret', color='#00AEEF').pixmap(32, 32))
 
         title_label = QLabel("DarkMark")
-        title_label.setObjectName("HeaderLabel") 
+        title_label.setObjectName("HeaderLabel")
 
         header_layout.addWidget(icon_label)
         header_layout.addWidget(title_label)
@@ -487,15 +487,15 @@ class DarkMarkApp(QMainWindow):
         #Header Ende
 
         # GEÄNDERT: tpl_status_label als Instanzattribut
-        self.tpl_status = QLabel("") 
-        self.tpl_status.setStyleSheet(f"color: #4CAF50; font-style: italic;") 
+        self.tpl_status = QLabel("")
+        self.tpl_status.setStyleSheet(f"color: #4CAF50; font-style: italic;")
         self.tpl_status.setWordWrap(True)
         left_layout.addWidget(self.tpl_status)
 
         # --- Schwärzungs-Modus UI-Elemente (Gruppe) ---
         self.redaction_ui_group = QWidget()
         redaction_ui_layout = QVBoxLayout(self.redaction_ui_group)
-        redaction_ui_layout.setContentsMargins(0, 0, 0, 0) 
+        redaction_ui_layout.setContentsMargins(0, 0, 0, 0)
 
         file_box = QGroupBox("1. Quelle auswählen")
         file_box_layout = QHBoxLayout()
@@ -510,7 +510,7 @@ class DarkMarkApp(QMainWindow):
 
         self.status_label = QLabel("Bitte eine PDF-Datei oder einen Ordner auswählen (oder per Drag&Drop ziehen).")
         self.status_label.setWordWrap(True)
-        self.status_label.setObjectName("StatusLabel") 
+        self.status_label.setObjectName("StatusLabel")
         redaction_ui_layout.addWidget(self.status_label)
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -545,7 +545,7 @@ class DarkMarkApp(QMainWindow):
         action_box = QGroupBox("2. Aktion ausführen")
         action_layout = QVBoxLayout(action_box)
         self.redact_preview_button = QPushButton(qta.icon('fa5s.eye-slash'), " Alle PDFs schwärzen (Vorschau)")
-        self.redact_preview_button.setObjectName("AccentButton") 
+        self.redact_preview_button.setObjectName("AccentButton")
         self.redact_preview_button.clicked.connect(self.start_batch_preview_redaction)
         action_layout.addWidget(self.redact_preview_button)
 
@@ -553,7 +553,7 @@ class DarkMarkApp(QMainWindow):
         self.save_button.clicked.connect(self.save_redacted_preview)
         action_layout.addWidget(self.save_button)
         action_layout.addWidget(self._create_separator())
-        
+
         self.exit_preview_button = QPushButton(qta.icon('fa5s.undo'), " Zurück zu Original-PDFs")
         self.exit_preview_button.clicked.connect(self.go_to_original_mode)
         action_layout.addWidget(self.exit_preview_button)
@@ -564,13 +564,13 @@ class DarkMarkApp(QMainWindow):
         action_layout.addWidget(self.redact_all_button)
         redaction_ui_layout.addWidget(action_box)
 
-        left_layout.addWidget(self.redaction_ui_group) 
+        left_layout.addWidget(self.redaction_ui_group)
 
 
         # --- Templaterstellungs-Modus UI-Elemente (Gruppe) ---
         self.template_ui_group = QWidget()
         template_ui_layout = QVBoxLayout(self.template_ui_group)
-        template_ui_layout.setContentsMargins(0,0,0,0) 
+        template_ui_layout.setContentsMargins(0,0,0,0)
 
         template_file_box = QGroupBox("1. PDF zum Markieren importieren")
         template_file_layout = QHBoxLayout(template_file_box)
@@ -598,13 +598,13 @@ class DarkMarkApp(QMainWindow):
         template_action_layout.addWidget(self.return_to_redaction_button)
 
         template_ui_layout.addWidget(template_action_box)
-        template_ui_layout.addStretch(1) 
+        template_ui_layout.addStretch(1)
 
         # NEU: Templates laden und verwalten Buttons
         template_load_manage_box = QGroupBox("3. Templates verwalten")
         template_load_manage_layout = QVBoxLayout(template_load_manage_box)
 
-        self.reload_user_templates_button = QPushButton(qta.icon('fa5s.sync-alt'), " Templates neu laden") 
+        self.reload_user_templates_button = QPushButton(qta.icon('fa5s.sync-alt'), " Templates neu laden")
         self.reload_user_templates_button.clicked.connect(self.reload_templates_data_from_disk)
         template_load_manage_layout.addWidget(self.reload_user_templates_button)
 
@@ -619,12 +619,12 @@ class DarkMarkApp(QMainWindow):
         self.clear_user_templates_button = QPushButton(qta.icon('fa5s.trash-alt'), " Alle Templates löschen")
         self.clear_user_templates_button.clicked.connect(self.clear_user_templates_data)
         template_load_manage_layout.addWidget(self.clear_user_templates_button)
-        
+
         template_ui_layout.addWidget(template_load_manage_box)
-        template_ui_layout.addStretch(1) 
+        template_ui_layout.addStretch(1)
 
 
-        left_layout.addWidget(self.template_ui_group) 
+        left_layout.addWidget(self.template_ui_group)
 
 
         left_layout.addStretch(1) # Flexibler Abstand
@@ -637,7 +637,7 @@ class DarkMarkApp(QMainWindow):
 
         # Footer (bleibt am unteren Rand)
         footer_label = QLabel("© Johannes Gschwendtner")
-        footer_label.setStyleSheet("color: #6A6A6A; font-size: 8pt;") 
+        footer_label.setStyleSheet("color: #6A6A6A; font-size: 8pt;")
         left_layout.addWidget(footer_label, 0, Qt.AlignmentFlag.AlignBottom)
 
         main_layout.addWidget(left_panel)
@@ -649,20 +649,20 @@ class DarkMarkApp(QMainWindow):
 
         # Schwärzungsmodus-Ansicht
         self.redaction_display_frame = QFrame()
-        self.redaction_display_frame.setObjectName("Card") 
+        self.redaction_display_frame.setObjectName("Card")
         redaction_display_layout = QVBoxLayout(self.redaction_display_frame)
         self.pdf_image_label = QLabel("...")
-        self.pdf_image_label.setObjectName("Placeholder") 
+        self.pdf_image_label.setObjectName("Placeholder")
         self.pdf_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         redaction_display_layout.addWidget(self.pdf_image_label)
         self.stacked_display_widget.addWidget(self.redaction_display_frame) # Index 0
 
         # Templaterstellungsmodus-Ansicht
-        self.template_canvas = DrawingCanvas(self) 
+        self.template_canvas = DrawingCanvas(self)
         self.stacked_display_widget.addWidget(self.template_canvas) # Index 1
 
         # Standardmäßig den Schwärzungsmodus anzeigen
-        self.stacked_display_widget.setCurrentIndex(0) 
+        self.stacked_display_widget.setCurrentIndex(0)
 
         return main_widget
 
@@ -682,8 +682,8 @@ class DarkMarkApp(QMainWindow):
             return
 
         password, ok = QInputDialog.getText(
-            self, 
-            "Passwort benötigt", 
+            self,
+            "Passwort benötigt",
             "Bitte geben Sie das Passwort für die Template-Verwaltung ein:",
             QLineEdit.Password # Macht die Eingabe verdeckt
         )
@@ -703,25 +703,25 @@ class DarkMarkApp(QMainWindow):
         self.state["current_mode"] = mode
         print(f"DEBUG: Switched to mode: {mode}")
 
-        self.clear_all_docs_except_templates() 
-        
+        self.clear_all_docs_except_templates()
+
         if mode == "redaction":
             self.stacked_display_widget.setCurrentIndex(0) # Schwärzungsansicht aktivieren
-            self.redaction_ui_group.setVisible(True) 
-            self.template_ui_group.setVisible(False) 
+            self.redaction_ui_group.setVisible(True)
+            self.template_ui_group.setVisible(False)
 
-            self.templates_data = load_template_images(USER_TEMPLATES_PATH) 
+            self.templates_data = load_template_images(USER_TEMPLATES_PATH)
             if self.state["original_pdf_paths"]:
                 self.state["current_pdf_index"] = 0
                 self._load_pdf_into_state(self.state["original_pdf_paths"][0], "original_doc")
-            
+
 
         elif mode == "template_creation":
             self.stacked_display_widget.setCurrentIndex(1) # Templaterstellungsansicht aktivieren
-            self.redaction_ui_group.setVisible(False) 
-            self.template_ui_group.setVisible(True) 
-            
-            self.reset_template_canvas() 
+            self.redaction_ui_group.setVisible(False)
+            self.template_ui_group.setVisible(True)
+
+            self.reset_template_canvas()
 
         self.update_ui()
 
@@ -737,7 +737,7 @@ class DarkMarkApp(QMainWindow):
 
         self.redaction_ui_group.setVisible(is_in_redaction_mode)
         self.template_ui_group.setVisible(is_in_template_mode)
-        
+
         self.manage_templates_button.setEnabled(not is_processing)
 
         # Aktuellen Template-Status des Labels aktualisieren
@@ -778,9 +778,9 @@ class DarkMarkApp(QMainWindow):
             else:
                 self.pdf_info_label.setText("PDF: -/-")
 
-            self.single_pdf_button.setEnabled(not is_processing and not is_in_preview_mode) 
-            self.folder_button.setEnabled(not is_processing and not is_in_preview_mode) 
-            
+            self.single_pdf_button.setEnabled(not is_processing and not is_in_preview_mode)
+            self.folder_button.setEnabled(not is_processing and not is_in_preview_mode)
+
             self.prev_pdf_button.setEnabled(bool(not is_processing and self.state["current_pdf_index"] > 0 and current_display_paths_list))
             self.next_pdf_button.setEnabled(
                 bool(not is_processing and current_display_paths_list and self.state["current_pdf_index"] < len(current_display_paths_list) - 1))
@@ -791,39 +791,39 @@ class DarkMarkApp(QMainWindow):
             self.next_page_button.setEnabled(
                 bool(not is_processing and doc_to_show and current_page_num < page_count - 1))
 
-            self.redact_preview_button.setEnabled(bool(not is_processing and has_original_docs and self.templates_data and not is_in_preview_mode)) 
-            
-            self.save_button.setEnabled(bool(not is_processing and is_in_preview_mode and has_redacted_preview)) 
-            
+            self.redact_preview_button.setEnabled(bool(not is_processing and has_original_docs and self.templates_data and not is_in_preview_mode))
+
+            self.save_button.setEnabled(bool(not is_processing and is_in_preview_mode and has_redacted_preview))
+
             self.redact_all_button.setEnabled(
-                bool(not is_processing and has_original_docs and self.templates_data and not is_in_preview_mode)) 
+                bool(not is_processing and has_original_docs and self.templates_data and not is_in_preview_mode))
 
             self.exit_preview_button.setEnabled(bool(not is_processing and is_in_preview_mode))
 
-            self.progress_bar.setVisible(is_processing) 
-            self.status_label.setVisible(True) 
-        
+            self.progress_bar.setVisible(is_processing)
+            self.status_label.setVisible(True)
+
         elif is_in_template_mode:
             has_template_pdf = bool(self.state["template_canvas_pdf_path"])
             has_template_rects = bool(self.state["template_canvas_rects"])
-            
+
             self.import_template_pdf_button.setEnabled(not is_processing)
             self.undo_template_button.setEnabled(not is_processing and has_template_rects)
             self.save_template_button.setEnabled(not is_processing and has_template_rects)
-            self.return_to_redaction_button.setEnabled(not is_processing) 
+            self.return_to_redaction_button.setEnabled(not is_processing)
 
             # NEU: Buttons für Template-Verwaltung im Template-Modus
             templates_in_user_dir = len([f for f in os.listdir(USER_TEMPLATES_PATH) if os.path.isfile(os.path.join(USER_TEMPLATES_PATH, f))]) \
                                      if os.path.exists(USER_TEMPLATES_PATH) else 0
 
-            self.reload_user_templates_button.setEnabled(not is_processing) 
-            self.import_templates_button.setEnabled(not is_processing) 
+            self.reload_user_templates_button.setEnabled(not is_processing)
+            self.import_templates_button.setEnabled(not is_processing)
             self.backup_templates_button.setEnabled(not is_processing and templates_in_user_dir > 0)
             self.clear_user_templates_button.setEnabled(not is_processing and templates_in_user_dir > 0)
 
-            self.progress_bar.setVisible(False) 
+            self.progress_bar.setVisible(False)
             self.status_label.setText("Bitte PDF zum Markieren importieren.")
-            self.status_label.setVisible(True) 
+            self.status_label.setVisible(True)
 
         if is_in_template_mode:
             self.template_canvas.update()
@@ -848,18 +848,18 @@ class DarkMarkApp(QMainWindow):
         Behält aber die Templaterstellungs-Daten bei.
         """
         print("DEBUG: clear_all_docs_except_templates called.")
-        if self.state["original_doc"]: 
+        if self.state["original_doc"]:
             self.state["original_doc"].close()
             self.state["original_doc"] = None
-        if self.state["redacted_doc"]: 
+        if self.state["redacted_doc"]:
             self.state["redacted_doc"].close()
             self.state["redacted_doc"] = None
-            
-        self.state["original_pdf_paths"].clear() 
-        self.state["current_pdf_index"] = 0
-        self.state["current_page_num"] = 0 
 
-        self._clear_temp_preview_files() 
+        self.state["original_pdf_paths"].clear()
+        self.state["current_pdf_index"] = 0
+        self.state["current_page_num"] = 0
+
+        self._clear_temp_preview_files()
 
 
     def clear_all_docs(self):
@@ -868,9 +868,9 @@ class DarkMarkApp(QMainWindow):
         Löschen aller Dokumentenreferenzen und Templaterstellungsdaten.
         """
         print("DEBUG: clear_all_docs (full reset) called.")
-        self.clear_all_docs_except_templates() 
-        
-        self.reset_template_canvas() 
+        self.clear_all_docs_except_templates()
+
+        self.reset_template_canvas()
 
 
     def reset_template_canvas(self):
@@ -886,7 +886,7 @@ class DarkMarkApp(QMainWindow):
         self.state["template_canvas_drawing"] = False
         self.state["template_canvas_start_point_orig"] = QPointF()
         self.state["template_canvas_end_point_orig"] = QPointF()
-        self.template_canvas.update() 
+        self.template_canvas.update()
 
 
     def _load_pdf_into_state(self, pdf_path: str, target_state_key: str):
@@ -908,8 +908,8 @@ class DarkMarkApp(QMainWindow):
             print(f"DEBUG: Loaded redacted_doc (preview): {os.path.basename(pdf_path)}")
         else:
             raise ValueError("Ungültiger target_state_key. Muss 'original_doc' oder 'redacted_doc' sein.")
-        
-        self.state["current_page_num"] = 0 
+
+        self.state["current_page_num"] = 0
 
 
     def _handle_pdf_paths(self, pdf_paths: List[str], source_description: str = ""):
@@ -922,20 +922,20 @@ class DarkMarkApp(QMainWindow):
         if not valid_pdf_paths:
             QMessageBox.warning(self, "Warnung", f"Keine gültigen PDF-Dateien im {source_description} gefunden.")
             return
-        
-        self.clear_all_docs_except_templates() 
+
+        self.clear_all_docs_except_templates()
 
         self.state["original_pdf_paths"] = sorted(valid_pdf_paths)
         self.state["current_pdf_index"] = 0
-        self.state["current_page_num"] = 0 
+        self.state["current_page_num"] = 0
 
         try:
             self._load_pdf_into_state(self.state["original_pdf_paths"][0], "original_doc")
-            self.status_label.setText(f"Controller: {len(valid_pdf_paths)} PDF(s) {source_description} geladen.") 
+            self.status_label.setText(f"Controller: {len(valid_pdf_paths)} PDF(s) {source_description} geladen.")
         except Exception as e:
             QMessageBox.critical(self, "Ladefehler", f"Fehler beim Laden der PDF:\n{e}")
             self.status_label.setText(f"Fehler beim Laden.")
-            self.clear_all_docs_except_templates() 
+            self.clear_all_docs_except_templates()
         self.update_ui()
 
 
@@ -968,22 +968,22 @@ class DarkMarkApp(QMainWindow):
 
         if self.state["current_pdf_index"] > 0:
             self.state["current_pdf_index"] -= 1;
-            self.load_pdf_for_display(current_paths[self.state["current_pdf_index"]]) 
+            self.load_pdf_for_display(current_paths[self.state["current_pdf_index"]])
 
     def next_pdf(self):
         current_paths = self.state["preview_pdf_paths"] if self.state["is_in_preview_mode"] else self.state["original_pdf_paths"]
 
         if self.state["current_pdf_index"] < len(current_paths) - 1:
             self.state["current_pdf_index"] += 1;
-            self.load_pdf_for_display(current_paths[self.state["current_pdf_index"]]) 
+            self.load_pdf_for_display(current_paths[self.state["current_pdf_index"]])
 
     def load_pdf_for_display(self, pdf_path: str):
         try:
             if self.state["is_in_preview_mode"]:
-                self._load_pdf_into_state(pdf_path, "redacted_doc") 
+                self._load_pdf_into_state(pdf_path, "redacted_doc")
             else:
                 self._load_pdf_into_state(pdf_path, "original_doc")
-                
+
             self.status_label.setText(f"Anzeige: {os.path.basename(pdf_path)}")
         except Exception as e:
             QMessageBox.critical(self, "Anzeigefehler", f"Fehler beim Laden der PDF zur Anzeige:\n{e}")
@@ -996,7 +996,7 @@ class DarkMarkApp(QMainWindow):
 
 
     def start_batch_preview_redaction(self):
-        if not self.state["original_pdf_paths"]: 
+        if not self.state["original_pdf_paths"]:
             QMessageBox.information(self, "Keine PDFs", "Bitte zuerst PDF-Dateien laden.")
             return
         if not self.templates_data:
@@ -1004,15 +1004,15 @@ class DarkMarkApp(QMainWindow):
             return
 
         self.state["is_processing"] = True
-        self._clear_temp_preview_files() 
-        
+        self._clear_temp_preview_files()
+
         self.current_temp_preview_dir = tempfile.mkdtemp(prefix="darkmark_preview_")
         print(f"DEBUG: Temporäres Vorschau-Verzeichnis erstellt: {self.current_temp_preview_dir}")
 
         self.preview_batch_total = len(self.state["original_pdf_paths"])
         self.preview_batch_processed = 0
-        self.state["preview_pdf_paths"].clear() 
-        
+        self.state["preview_pdf_paths"].clear()
+
         self.progress_bar.setMaximum(self.preview_batch_total)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
@@ -1041,16 +1041,16 @@ class DarkMarkApp(QMainWindow):
         if self.preview_batch_processed >= self.preview_batch_total:
             self.state["is_processing"] = False
             self.progress_bar.setVisible(False)
-            
+
             if self.state["preview_pdf_paths"]:
-                self.state["is_in_preview_mode"] = True 
+                self.state["is_in_preview_mode"] = True
                 self.state["current_pdf_index"] = 0
-                self.state["preview_pdf_paths"].sort() 
-                self.load_pdf_for_display(self.state["preview_pdf_paths"][0]) 
+                self.state["preview_pdf_paths"].sort()
+                self.load_pdf_for_display(self.state["preview_pdf_paths"][0])
                 self.status_label.setText(f"Vorschau-Schwärzung abgeschlossen. {len(self.state['preview_pdf_paths'])} Dateien zum Ansehen bereit.")
             else:
                 self.status_label.setText("Vorschau-Schwärzung abgeschlossen. Keine PDFs generiert (oder alle fehlgeschlagen).")
-                self.clear_all_docs_except_templates() 
+                self.clear_all_docs_except_templates()
 
             self.update_ui()
 
@@ -1061,11 +1061,11 @@ class DarkMarkApp(QMainWindow):
             return
 
         current_preview_path = self.state["preview_pdf_paths"][self.state["current_pdf_index"]]
-        original_name = os.path.basename(current_preview_path).replace("_preview", "") 
+        original_name = os.path.basename(current_preview_path).replace("_preview", "")
         name, ext = os.path.splitext(original_name)
-        
+
         if not ext: ext = ".pdf"
-        elif ext.lower() != ".pdf": ext = ".pdf" 
+        elif ext.lower() != ".pdf": ext = ".pdf"
 
         save_path, _ = QFileDialog.getSaveFileName(self, "Geschwärztes PDF speichern", f"{name}_geschwaerzt{ext}",
                                                    "PDF-Dateien (*.pdf)")
@@ -1089,8 +1089,8 @@ class DarkMarkApp(QMainWindow):
 
         self.state["is_processing"] = True
         if self.state["is_in_preview_mode"]:
-            self.go_to_original_mode() 
-        
+            self.go_to_original_mode()
+
         self.batch_files_to_process = len(self.state["original_pdf_paths"])
         self.batch_files_processed = 0
         self.batch_new_files.clear()
@@ -1130,7 +1130,7 @@ class DarkMarkApp(QMainWindow):
             QMessageBox.information(self, "Fertig",
                                     f"Alle {self.batch_files_to_process} PDF-Dateien wurden verarbeitet.")
 
-            self.clear_all_docs() 
+            self.clear_all_docs()
             self.update_ui()
 
     def closeEvent(self, event):
@@ -1144,11 +1144,11 @@ class DarkMarkApp(QMainWindow):
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            self.clear_all_docs() 
+            self.clear_all_docs()
             self.thread_pool.clear()
             self.thread_pool.waitForDone()
             # GEÄNDERT: TEMP_IMAGE_DIR_GLOBAL entfernt
-            # if os.path.exists(TEMP_IMAGE_DIR_GLOBAL): 
+            # if os.path.exists(TEMP_IMAGE_DIR_GLOBAL):
             #     shutil.rmtree(TEMP_IMAGE_DIR_GLOBAL, ignore_errors=True)
             event.accept()
         else:
@@ -1165,7 +1165,7 @@ class DarkMarkApp(QMainWindow):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
                 if url.isLocalFile() and url.toLocalFile().lower().endswith('.pdf'):
-                    event.acceptProposedAction() 
+                    event.acceptProposedAction()
                     return
         event.ignore()
 
@@ -1205,27 +1205,27 @@ class DarkMarkApp(QMainWindow):
 
 
     def go_to_original_mode(self):
-        if not self.state["is_in_preview_mode"]: 
+        if not self.state["is_in_preview_mode"]:
             return
-        
+
         self.state["is_in_preview_mode"] = False
-        self._clear_temp_preview_files() 
+        self._clear_temp_preview_files()
 
         if self.state["redacted_doc"]:
             self.state["redacted_doc"].close()
             self.state["redacted_doc"] = None
 
         if self.state["original_pdf_paths"]:
-            self.state["current_pdf_index"] = 0 
+            self.state["current_pdf_index"] = 0
             try:
                 self._load_pdf_into_state(self.state["original_pdf_paths"][self.state["current_pdf_index"]], "original_doc")
                 self.status_label.setText(f"Zurück zu Original-PDFs. Vorschau-Dateien gelöscht.")
             except Exception as e:
                 QMessageBox.critical(self, "Fehler", f"Fehler beim erneuten Laden des Original-PDFs:\n{e}")
                 self.status_label.setText("Fehler beim Zurückwechseln.")
-                self.clear_all_docs_except_templates() 
+                self.clear_all_docs_except_templates()
         else:
-            self.clear_all_docs_except_templates() 
+            self.clear_all_docs_except_templates()
             self.status_label.setText("Vorschau-Modus verlassen. Keine Original-PDFs mehr vorhanden.")
 
         self.update_ui()
@@ -1242,11 +1242,11 @@ class DarkMarkApp(QMainWindow):
             return
 
         try:
-            self.state["template_canvas_pdf_path"] = file_path 
+            self.state["template_canvas_pdf_path"] = file_path
             doc = fitz.open(self.state["template_canvas_pdf_path"])
-            page = doc.load_page(0) 
+            page = doc.load_page(0)
 
-            pix = page.get_pixmap(dpi=150) 
+            pix = page.get_pixmap(dpi=150)
 
             image = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
             self.state["template_canvas_pixmap"] = QPixmap.fromImage(image)
@@ -1254,13 +1254,13 @@ class DarkMarkApp(QMainWindow):
 
             self.reset_template_canvas_view_and_rects()
             self.status_label.setText(f"PDF geladen für Templates: {os.path.basename(file_path)}")
-            self.update_ui() 
+            self.update_ui()
         except Exception as e:
             QMessageBox.critical(self, "Fehler", f"PDF konnte nicht geladen werden:\n{e}")
             self.state["template_canvas_pdf_path"] = None
             self.state["template_canvas_pixmap"] = None
             self.reset_template_canvas_view_and_rects()
-            self.update_ui() 
+            self.update_ui()
 
 
     def reset_template_canvas_view_and_rects(self):
@@ -1273,21 +1273,21 @@ class DarkMarkApp(QMainWindow):
             self.state["template_canvas_zoom"] = 1.0
             self.state["template_canvas_pan_offset"] = QPointF(0, 0)
             self.template_canvas.update()
-            self.undo_template_button.setEnabled(False) 
-            self.save_template_button.setEnabled(False) 
+            self.undo_template_button.setEnabled(False)
+            self.save_template_button.setEnabled(False)
             return
 
         w_ratio = self.template_canvas.width() / self.state["template_canvas_pixmap"].width()
         h_ratio = self.template_canvas.height() / self.state["template_canvas_pixmap"].height()
-        self.state["template_canvas_zoom"] = min(w_ratio, h_ratio, 1.0) 
+        self.state["template_canvas_zoom"] = min(w_ratio, h_ratio, 1.0)
 
         self.state["template_canvas_pan_offset"] = QPointF(
             (self.template_canvas.width() - self.state["template_canvas_pixmap"].width() * self.state["template_canvas_zoom"]) / 2,
             (self.template_canvas.height() - self.state["template_canvas_pixmap"].height() * self.state["template_canvas_zoom"]) / 2
         )
         self.template_canvas.update()
-        self.undo_template_button.setEnabled(False) 
-        self.save_template_button.setEnabled(False) 
+        self.undo_template_button.setEnabled(False)
+        self.save_template_button.setEnabled(False)
 
     def undo_last_template_rectangle(self):
         """Entfernt das zuletzt gezeichnete Rechteck im Templaterstellungsmodus."""
@@ -1310,7 +1310,7 @@ class DarkMarkApp(QMainWindow):
             QMessageBox.warning(self, "Warnung", "Keine Markierungen zum Speichern vorhanden oder PDF nicht geladen.")
             return
 
-        dir_path = USER_TEMPLATES_PATH 
+        dir_path = USER_TEMPLATES_PATH
 
         if not os.path.exists(dir_path):
             try:
@@ -1333,7 +1333,7 @@ class DarkMarkApp(QMainWindow):
             scale_x = pdf_page_rect.width / pixmap_size.width()
             scale_y = pdf_page_rect.height / pixmap_size.height()
 
-            export_dpi = 300 
+            export_dpi = 300
             saved_count = 0
 
             for i, rect in enumerate(self.state["template_canvas_rects"]):
@@ -1357,8 +1357,8 @@ class DarkMarkApp(QMainWindow):
             QMessageBox.information(self, "Erfolg",
                                     f"{saved_count} Template-Ausschnitte erfolgreich gespeichert im Ordner:\n'{dir_path}'\n\nDie Templates werden beim nächsten Start oder Moduswechsel geladen.")
 
-            self.reset_template_canvas_view_and_rects() 
-            self.state["template_canvas_pdf_path"] = None 
+            self.reset_template_canvas_view_and_rects()
+            self.state["template_canvas_pdf_path"] = None
             self.state["template_canvas_pixmap"] = None
             self.template_canvas.update()
             self.update_ui()
@@ -1379,10 +1379,10 @@ class DarkMarkApp(QMainWindow):
         if self.state["is_processing"]:
             QMessageBox.warning(self, "Verarbeitung läuft", "Bitte warten Sie, bis die aktuelle Verarbeitung abgeschlossen ist.")
             return
-        
+
         self.templates_data = load_template_images(USER_TEMPLATES_PATH)
         self.status_label.setText(f"Templates neu geladen: {len(self.templates_data)} gefunden.")
-        QMessageBox.information(self, "Templates neu geladen", 
+        QMessageBox.information(self, "Templates neu geladen",
                                 f"{len(self.templates_data)} Templates aus '{USER_TEMPLATES_PATH}' erfolgreich geladen.")
         self.update_ui()
 
@@ -1392,14 +1392,14 @@ class DarkMarkApp(QMainWindow):
         if self.state["is_processing"]:
             QMessageBox.warning(self, "Verarbeitung läuft", "Bitte warten Sie, bis die aktuelle Verarbeitung abgeschlossen ist.")
             return
-        
+
         source_dir = QFileDialog.getExistingDirectory(self, "Ordner mit Templates zum Importieren auswählen")
         if not source_dir:
             return
 
         imported_count = 0
         skipped_count = 0
-        
+
         # Sicherstellen, dass der Zielordner existiert
         if not os.path.exists(USER_TEMPLATES_PATH):
             os.makedirs(USER_TEMPLATES_PATH, exist_ok=True)
@@ -1410,14 +1410,14 @@ class DarkMarkApp(QMainWindow):
                 dest_path = os.path.join(USER_TEMPLATES_PATH, filename)
                 try:
                     # Kopieren, überschreibt existierende Dateien mit gleichem Namen
-                    shutil.copy2(src_path, dest_path) 
+                    shutil.copy2(src_path, dest_path)
                     imported_count += 1
                 except Exception as e:
                     print(f"WARNUNG: Fehler beim Importieren von {filename}: {e}")
                     skipped_count += 1
-        
+
         self.status_label.setText(f"Import abgeschlossen: {imported_count} importiert, {skipped_count} übersprungen/fehlgeschlagen.")
-        QMessageBox.information(self, "Templates importiert", 
+        QMessageBox.information(self, "Templates importiert",
                                 f"{imported_count} Templates erfolgreich importiert.\n{skipped_count} Templates konnten nicht importiert werden (z.B. Fehler beim Kopieren, Schreibrechte, etc.).")
         self.reload_templates_data_from_disk() # Templates-Liste in der App aktualisieren
 
@@ -1445,14 +1445,14 @@ class DarkMarkApp(QMainWindow):
                 src_path = os.path.join(USER_TEMPLATES_PATH, filename)
                 dest_path = os.path.join(dest_dir, filename)
                 try:
-                    shutil.copy2(src_path, dest_path) 
+                    shutil.copy2(src_path, dest_path)
                     backed_up_count += 1
                 except Exception as e:
                     print(f"WARNUNG: Fehler beim Sichern von {filename}: {e}")
                     skipped_count += 1
-        
+
         self.status_label.setText(f"Sicherung abgeschlossen: {backed_up_count} gesichert, {skipped_count} übersprungen/fehlgeschlagen.")
-        QMessageBox.information(self, "Templates gesichert", 
+        QMessageBox.information(self, "Templates gesichert",
                                 f"{backed_up_count} Templates erfolgreich gesichert im Ordner:\n'{dest_dir}'\n{skipped_count} Templates konnten nicht gesichert werden.")
         self.update_ui() # UI aktualisieren, falls sich Button-Zustände ändern
 
@@ -1471,11 +1471,11 @@ class DarkMarkApp(QMainWindow):
             QMessageBox.information(self, "Templates löschen", "Keine Benutzer-Templates zum Löschen gefunden.")
             return
 
-        reply = QMessageBox.question(self, 'Templates löschen', 
+        reply = QMessageBox.question(self, 'Templates löschen',
                                      f"Möchten Sie WIRKLICH ALLE {num_templates} Templates im Ordner '{USER_TEMPLATES_PATH}' löschen?\n\nDIESE AKTION KANN NICHT RÜCKGÄNGIG GEMACHT WERDEN!",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
-        
+
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 if os.path.exists(USER_TEMPLATES_PATH):
@@ -1485,7 +1485,7 @@ class DarkMarkApp(QMainWindow):
                     self.status_label.setText("Alle Benutzer-Templates gelöscht.")
                 else:
                     self.status_label.setText("Keine Benutzer-Templates zum Löschen gefunden (Ordner existiert nicht).")
-                
+
                 self.reload_templates_data_from_disk() # Templates-Liste in der App aktualisieren
                 QMessageBox.information(self, "Templates gelöscht", "Alle Benutzer-Templates erfolgreich gelöscht.")
             except Exception as e:
@@ -1495,6 +1495,17 @@ class DarkMarkApp(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # --- HIER WIRD DAS ANWENDUNGS-ICON GESETZT ---
+    # Der Pfad zum Logo wird über get_base_path() und den "assets"-Ordner ermittelt
+    app_icon_path = os.path.join(get_base_path(), "assets", "logo.png")
+
+    if os.path.exists(app_icon_path):
+        app.setWindowIcon(QIcon(app_icon_path))
+        print(f"DEBUG: Anwendungs-Icon geladen von: {app_icon_path}")
+    else:
+        print(f"WARNUNG: Anwendungs-Icon '{app_icon_path}' nicht gefunden.")
+    # --- ENDE ANWENDUNGS-ICON SETZEN ---
 
     window = DarkMarkApp()
     window.show()
