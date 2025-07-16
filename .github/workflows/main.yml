@@ -43,8 +43,17 @@ jobs:
         
         # Generiere Windows .ico
         if [ "$RUNNER_OS" == "Windows" ]; then
-          # Installiere ImageMagick über Chocolatey und erzwinge Neuinstallation für neueste Version
-          choco install imagemagick --force --no-progress
+          echo "Installing ImageMagick using winget..."
+          # Installiere ImageMagick über winget
+          # Verwende pwsh (PowerShell) um winget-Befehle auszuführen, da der Standard-Shell für den Schritt bash ist
+          pwsh -Command "winget install ImageMagick.ImageMagick --silent --accept-package-agreements --accept-source-agreements"
+          
+          # Überprüfe, ob magick im Pfad verfügbar ist (optional, aber gut zur Fehlersuche)
+          if ! command -v magick &> /dev/null; then
+              echo "Error: 'magick' command not found after winget install. Please check ImageMagick installation."
+              exit 1
+          fi
+
           # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 256x256) für ICO
           magick "$ICON_SOURCE_PNG" -resize 256x256 scaled_icon_source.png
           # Konvertiere das skalierte PNG zu ICO mit allen gängigen Größen
@@ -104,7 +113,7 @@ jobs:
           --hidden-import "PIL.ImageQt"
         )
 
-        # KORRIGIERT: ICON_PARAM muss wieder explizit hinzugefügt werden
+        # ICON_PARAM muss wieder explizit hinzugefügt werden
         if [ "$RUNNER_OS" == "Windows" ]; then
           args+=(--icon "icon.ico")
         elif [ "$RUNNER_OS" == "macOS" ]; then
