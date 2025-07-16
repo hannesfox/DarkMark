@@ -36,55 +36,52 @@ jobs:
         pip install --no-cache-dir -r requirements.txt
       timeout-minutes: 10
 
-    # Schritt zur Generierung der Plattform-spezifischen Icons
-    - name: Generate Platform Icons from assets/logo.png
+    # NEUER SCHRITT: Generiere Windows .ico
+    - name: Generate Windows Icon (ICO)
+      if: runner.os == 'Windows'
+      shell: powershell # Wichtig: Nutze PowerShell direkt
+      run: |
+        $ICON_SOURCE_PNG="assets/logo.png"
+        echo "Installing ImageMagick via Chocolatey..."
+        # Installiere ImageMagick über Chocolatey. Das --force ist hier in Ordnung,
+        # da wir sicherstellen wollen, dass es installiert/erneut installiert wird.
+        choco install imagemagick --force --no-progress
+        
+        # Sicherstellen, dass magick im Pfad ist oder direkt aufgerufen wird
+        # Wenn choco es korrekt installiert, sollte es im PATH sein.
+        # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 256x256) für ICO
+        magick "$ICON_SOURCE_PNG" -resize 256x256 scaled_icon_source.png
+        # Konvertiere das skalierte PNG zu ICO mit allen gängigen Größen
+        magick convert scaled_icon_source.png -define icon:autoresize=256,128,64,48,32,16 icon.ico
+        echo "DEBUG: icon.ico created for Windows."
+        Remove-Item scaled_icon_source.png -ErrorAction SilentlyContinue # Temporäres skaliertes Bild aufräumen
+
+    # NEUER SCHRITT: Generiere macOS .icns
+    - name: Generate macOS Icon (ICNS)
+      if: runner.os == 'macOS'
+      shell: bash # Standard bash für macOS Befehle
       run: |
         ICON_SOURCE_PNG="assets/logo.png"
+        mkdir icon.iconset
+        # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 512x512) für ICNS (höhere Auflösung für Retina)
+        sips -z 512 512 "$ICON_SOURCE_PNG" --out scaled_icon_source.png
         
-        # Generiere Windows .ico
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          echo "Installing ImageMagick using winget..."
-          # Installiere ImageMagick über winget
-          # Verwende pwsh (PowerShell) um winget-Befehle auszuführen, da der Standard-Shell für den Schritt bash ist
-          pwsh -Command "winget install ImageMagick.ImageMagick --silent --accept-package-agreements --accept-source-agreements"
-          
-          # Überprüfe, ob magick im Pfad verfügbar ist (optional, aber gut zur Fehlersuche)
-          if ! command -v magick &> /dev/null; then
-              echo "Error: 'magick' command not found after winget install. Please check ImageMagick installation."
-              exit 1
-          fi
-
-          # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 256x256) für ICO
-          magick "$ICON_SOURCE_PNG" -resize 256x256 scaled_icon_source.png
-          # Konvertiere das skalierte PNG zu ICO mit allen gängigen Größen
-          magick convert scaled_icon_source.png -define icon:autoresize=256,128,64,48,32,16 icon.ico
-          echo "DEBUG: icon.ico created for Windows."
-        fi
-
-        # Generiere macOS .icns
-        if [ "$RUNNER_OS" == "macOS" ]; then
-          mkdir icon.iconset
-          # Skaliere das PNG zuerst auf eine sichere Maximalgröße (z.B. 512x512) für ICNS (höhere Auflösung für Retina)
-          sips -z 512 512 "$ICON_SOURCE_PNG" --out scaled_icon_source.png
-          
-          # Erstelle alle benötigten PNG-Größen für .icns aus dem skalierten Bild
-          sips -z 16 16 scaled_icon_source.png --out icon.iconset/icon_16x16.png
-          sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_16x16@2x.png
-          sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_32x32.png
-          sips -z 64 64 scaled_icon_source.png --out icon.iconset/icon_32x32@2x.png
-          sips -z 128 128 scaled_icon_source.png --out icon.iconset/icon_64x64.png
-          sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_128x128@2x.png
-          sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_256x256.png
-          sips -z 512 512 scaled_icon_source.png --out icon.iconset/icon_256x256@2x.png
-          sips -z 1024 1024 scaled_icon_source.png --out icon.iconset/icon_512x512@2x.png # 512x512@2x = 1024x1024px
-          
-          # Erstelle .icns aus dem .iconset Ordner
-          iconutil -c icns icon.iconset -o icon.icns
-          echo "DEBUG: icon.icns created for macOS."
-          rm -r icon.iconset # Aufräumen des temporären Ordners
-        fi
+        # Erstelle alle benötigten PNG-Größen für .icns aus dem skalierten Bild
+        sips -z 16 16 scaled_icon_source.png --out icon.iconset/icon_16x16.png
+        sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_16x16@2x.png
+        sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_32x32.png
+        sips -z 64 64 scaled_icon_source.png --out icon.iconset/icon_32x32@2x.png
+        sips -z 128 128 scaled_icon_source.png --out icon.iconset/icon_64x64.png
+        sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_128x128@2x.png
+        sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_256x256.png
+        sips -z 512 512 scaled_icon_source.png --out icon.iconset/icon_256x256@2x.png
+        sips -z 1024 1024 scaled_icon_source.png --out icon.iconset/icon_512x512@2x.png # 512x512@2x = 1024x1024px
+        
+        # Erstelle .icns aus dem .iconset Ordner
+        iconutil -c icns icon.iconset -o icon.icns
+        echo "DEBUG: icon.icns created for macOS."
+        rm -r icon.iconset # Aufräumen des temporären Ordners
         rm scaled_icon_source.png 2>/dev/null || true # Temporäres skaliertes Bild aufräumen
-      shell: bash
 
 
     - name: Extract version from tag
