@@ -12,7 +12,8 @@ from appdirs import user_data_dir
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QProgressBar, QFrame, QGroupBox,
-    QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit
+    QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit,
+    QComboBox
 )
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF
 # QIcon bleibt importiert
@@ -63,6 +64,124 @@ USER_TEMPLATES_PATH = os.path.join(user_data_dir(APP_NAME, APP_AUTHOR), "darkmar
 
 MATCH_THRESHOLD = 0.6
 RENDER_DPI = 300
+SEARCH_DPI = 100 # Reduzierte Auflösung für die Suche (schneller)
+
+
+# ==============================================================================
+#      MODERN DARK THEME STYLESHEET
+# ==============================================================================
+DARK_STYLESHEET = """
+QMainWindow {
+    background-color: #2b2b2b;
+    color: #f0f0f0;
+}
+QWidget {
+    background-color: #2b2b2b;
+    color: #f0f0f0;
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
+    font-size: 14px;
+}
+QGroupBox {
+    border: 1px solid #444444;
+    border-radius: 8px;
+    margin-top: 1.5em;
+    font-weight: bold;
+    color: #bbbbbb;
+    padding-top: 15px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    padding: 0 10px;
+    background-color: #2b2b2b;
+    color: #1e88e5; /* Accent color for titles */
+}
+QPushButton {
+    background-color: #3e3e3e;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 10px 15px;
+    color: #ffffff;
+    min-height: 25px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #505050;
+    border-color: #777;
+}
+QPushButton:pressed {
+    background-color: #323232;
+    border-color: #1e88e5;
+}
+QPushButton:disabled {
+    background-color: #2b2b2b;
+    border-color: #333;
+    color: #666;
+}
+QPushButton#AccentButton {
+    background-color: #1e88e5;
+    border: 1px solid #1565c0;
+    font-weight: bold;
+}
+QPushButton#AccentButton:hover {
+    background-color: #2196f3;
+    border-color: #42a5f5;
+}
+QPushButton#AccentButton:pressed {
+    background-color: #1976d2;
+}
+QPushButton#DestructiveButton {
+    background-color: #c62828;
+    border: 1px solid #b71c1c;
+}
+QPushButton#DestructiveButton:hover {
+    background-color: #d32f2f;
+}
+QLabel {
+    color: #e0e0e0;
+}
+QLabel#HeaderLabel {
+    font-size: 26px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 1px;
+}
+QLabel#StatusLabel {
+    color: #aaaaaa;
+    font-style: italic;
+    margin-top: 5px;
+}
+QProgressBar {
+    border: 1px solid #555;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #333;
+    height: 10px;
+}
+QProgressBar::chunk {
+    background-color: #1e88e5;
+    border-radius: 3px;
+}
+QFrame#Card {
+    background-color: #333333;
+    border: 1px solid #444;
+    border-radius: 10px;
+}
+QLabel#Placeholder {
+    color: #777;
+    font-size: 16px;
+}
+QLineEdit {
+    background-color: #333;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 5px;
+    color: #fff;
+}
+QLineEdit:focus {
+    border: 1px solid #1e88e5;
+}
+"""
 
 
 # ==============================================================================
@@ -121,23 +240,50 @@ def page_to_pixmap(doc: fitz.Document, page_num: int, target_size: QSize) -> QPi
 
 
 # find_and_redact_on_page (Originalversion)
-def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshold: float) -> int:
+# find_and_redact_on_page (Originalversion)
+def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshold: float, fill_color: tuple = (0, 0, 0)) -> int:
     redacted_count = 0
-    mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
-    pix = page.get_pixmap(matrix=mat, alpha=False)
-    page_cv_img_gray = cv2.imdecode(np.frombuffer(pix.tobytes("png"), np.uint8), cv2.IMREAD_GRAYSCALE)
-    if page_cv_img_gray is None:
-        print(f"WARNUNG: Konnte Seite {page.number+1} nicht in Graustufenbild konvertieren.")
+    # OPTIMIERUNG: Suche bei niedrigerer Auflösung (SEARCH_DPI) statt RENDER_DPI
+    scale = SEARCH_DPI / 72.0
+    mat = fitz.Matrix(scale, scale)
+    
+    # OPTIMIERUNG: Direkt Graustufen anfordern (colorspace=fitz.csGRAY)
+    pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY, alpha=False)
+    
+    # OPTIMIERUNG: Direkter Pufferzugriff statt PNG-Kodierung/Dekodierung
+    # pix.samples liefert die Rohdaten als bytes
+    try:
+        page_cv_img_gray = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
+    except Exception as e:
+        print(f"ERROR: Buffer conversion failed for page {page.number+1}: {e}")
         return 0
+
     inv_mat = ~mat
+    
+    # Skalierungsfaktor für Templates berechnen (falls Templates bei RENDER_DPI erstellt wurden)
+    # Wir gehen davon aus, dass templates_data im Original RENDER_DPI (300) haben.
+    template_scale_factor = SEARCH_DPI / RENDER_DPI
+
     for template in templates_data_list:
-        template_cv = template["cv_image"]
-        if template_cv is None or template_cv.size == 0:
+        template_cv_orig = template["cv_image"]
+        if template_cv_orig is None or template_cv_orig.size == 0:
             print(f"WARNUNG: Leeres oder ungültiges Template übersprungen: {template['name']}")
             continue
+        
+        # OPTIMIERUNG: Template temporär skalieren, passend zur Suchauflösung
+        template_cv = template_cv_orig
+        if abs(template_scale_factor - 1.0) > 0.01:
+            try:
+                # cv2.resize erwartet (width, height) als dsize, oder fx/fy
+                template_cv = cv2.resize(template_cv_orig, None, fx=template_scale_factor, fy=template_scale_factor, interpolation=cv2.INTER_AREA)
+            except Exception as e:
+                print(f"WARNUNG: Skalierung für Template {template['name']} fehlgeschlagen: {e}")
+                continue
 
         if template_cv.shape[0] > page_cv_img_gray.shape[0] or template_cv.shape[1] > page_cv_img_gray.shape[1]:
-            print(f"WARNUNG: Template {template['name']} ist größer als die Seite, übersprungen.")
+            # Template ist größer als die Seite (kann bei kleinen Seiten oder Randbereichen passieren)
+            # Bei aggressivem Downsampling kann das eher passieren, wenn Template fast so groß wie Seite ist.
+            # print(f"DEBUG: Template {template['name']} zu groß für Seite {page.number+1} bei SEARCH_DPI.")
             continue
 
         try:
@@ -148,9 +294,14 @@ def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshol
             continue
 
         for pt in zip(*locs[::-1]):
-            rect = fitz.Rect(pt[0], pt[1], pt[0] + template_cv.shape[1], pt[1] + template_cv.shape[0]) * inv_mat
+            # pt ist (x, y) im Suchbild (SEARCH_DPI)
+            # Rechteck im Suchbild konstruieren
+            search_rect = fitz.Rect(pt[0], pt[1], pt[0] + template_cv.shape[1], pt[1] + template_cv.shape[0])
+            
+            # Koordinaten zurück auf PDF-Seite transformieren (Inv-Matrix)
+            rect = search_rect * inv_mat
 
-            page.add_redact_annot(rect, fill=(0, 0, 0))
+            page.add_redact_annot(rect, fill=fill_color)
             redacted_count += 1
             print(f"DEBUG: Found '{template['name']}' at {rect} on page {page.number+1}.")
 
@@ -158,7 +309,9 @@ def find_and_redact_on_page(page: fitz.Page, templates_data_list: list, threshol
         page.apply_redactions()
         print(f"DEBUG: Page {page.number + 1}: Applied {redacted_count} redactions.")
     else:
-        print(f"DEBUG: Page {page.number + 1}: No redactions applied.")
+        # print(f"DEBUG: Page {page.number + 1}: No redactions applied.")
+        pass
+        
     return redacted_count
 
 
@@ -172,11 +325,12 @@ class WorkerSignals(QObject):
     progress = Signal(str)
 
 class RedactionTask(QRunnable):
-    def __init__(self, input_path: str, output_path: str, templates: list):
+    def __init__(self, input_path: str, output_path: str, templates: list, redaction_color: tuple = (0, 0, 0)):
         super().__init__()
         self.input_path = input_path
         self.output_path = output_path
         self.templates = templates
+        self.redaction_color = redaction_color
         self.signals = WorkerSignals()
 
     @Slot()
@@ -186,7 +340,7 @@ class RedactionTask(QRunnable):
             print(f"DEBUG: RedactionTask: Processing {os.path.basename(self.input_path)}...")
             with fitz.open(self.input_path) as doc:
                 for page in doc:
-                    total_redactions += find_and_redact_on_page(page, self.templates, MATCH_THRESHOLD)
+                    total_redactions += find_and_redact_on_page(page, self.templates, MATCH_THRESHOLD, fill_color=self.redaction_color)
 
                 if total_redactions > 0:
                     doc.save(self.output_path, garbage=4, deflate=True)
@@ -204,11 +358,12 @@ class RedactionTask(QRunnable):
             self.signals.error.emit(f"Fehler bei Vorschau '{os.path.basename(self.input_path)}': {e}")
 
 class PreviewRedactionTask(QRunnable):
-    def __init__(self, original_pdf_path: str, temp_output_dir: str, templates: list):
+    def __init__(self, original_pdf_path: str, temp_output_dir: str, templates: list, redaction_color: tuple = (0, 0, 0)):
         super().__init__()
         self.original_pdf_path = original_pdf_path
         self.temp_output_dir = temp_output_dir
         self.templates = templates
+        self.redaction_color = redaction_color
         self.signals = WorkerSignals()
 
     @Slot()
@@ -221,7 +376,7 @@ class PreviewRedactionTask(QRunnable):
             print(f"DEBUG: PreviewRedactionTask: Processing {os.path.basename(self.original_pdf_path)}...")
             with fitz.open(self.original_pdf_path) as doc:
                 for page in doc:
-                    total_redactions += find_and_redact_on_page(page, self.templates, MATCH_THRESHOLD)
+                    total_redactions += find_and_redact_on_page(page, self.templates, MATCH_THRESHOLD, fill_color=self.redaction_color)
 
                 doc.save(temp_output_path, garbage=4, deflate=True)
                 print(f"DEBUG: PreviewRedactionTask: Saved temporary {os.path.basename(temp_output_path)} with {total_redactions} redactions.")
@@ -360,11 +515,15 @@ class DrawingCanvas(QLabel):
 class DarkMarkApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DarkMark 1.1.4")
-        self.setGeometry(100, 100, 1400, 900)
-        self.setMinimumSize(1000, 700)
+        self.setWindowTitle("DarkMark 2.0")
+        self.setGeometry(100, 100, 1450, 950)
+        self.setMinimumSize(1100, 750)
 
-        self._set_macos_style_with_fallback()
+        # Apply Modern Dark Theme
+        self.setStyleSheet(DARK_STYLESHEET)
+        
+        # Legacy Mac Style Helper (optional, set stylesheet overrides it mostly but nice to have structure)
+        # self._set_macos_style_with_fallback()
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAcceptDrops(True)
@@ -380,6 +539,7 @@ class DarkMarkApp(QMainWindow):
             "current_page_num": 0,
             "is_processing": False,
             "is_in_preview_mode": False,
+            "redaction_color": (0, 0, 0), # Default: Schwarz
 
             # --- Zustand für Templaterstellungsmodus ---
             "template_canvas_pdf_path": None,
@@ -437,14 +597,14 @@ class DarkMarkApp(QMainWindow):
     def _create_main_app_widget(self) -> QWidget:
         main_widget = QWidget()
         main_layout = QHBoxLayout(main_widget)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(30)
 
         # --- Linkes Steuerungs-Panel ---
         left_panel = QWidget()
-        left_panel.setFixedWidth(350)
+        left_panel.setFixedWidth(400)
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setSpacing(15)
+        left_layout.setSpacing(20)
         left_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # Header mit logo
@@ -462,7 +622,7 @@ class DarkMarkApp(QMainWindow):
             ))
         else:
             print(f"WARNUNG: Logo-Datei nicht gefunden unter: {logo_path}")
-            icon_label.setPixmap(qta.icon('fa5s.user-secret', color='#00AEEF').pixmap(32, 32))
+            icon_label.setPixmap(qta.icon('fa5s.user-secret', color='#1e88e5').pixmap(48, 48))
 
         title_label = QLabel("DarkMark")
         title_label.setObjectName("HeaderLabel")
@@ -473,9 +633,8 @@ class DarkMarkApp(QMainWindow):
         left_layout.addLayout(header_layout)
         #Header Ende
 
-        # GEÄNDERT: tpl_status_label als Instanzattribut
         self.tpl_status = QLabel("")
-        self.tpl_status.setStyleSheet(f"color: #4CAF50; font-style: italic;")
+        self.tpl_status.setStyleSheet(f"color: #4CAF50; font-style: italic; margin-bottom: 5px;")
         self.tpl_status.setWordWrap(True)
         left_layout.addWidget(self.tpl_status)
 
@@ -483,12 +642,13 @@ class DarkMarkApp(QMainWindow):
         self.redaction_ui_group = QWidget()
         redaction_ui_layout = QVBoxLayout(self.redaction_ui_group)
         redaction_ui_layout.setContentsMargins(0, 0, 0, 0)
+        redaction_ui_layout.setSpacing(15)
 
         file_box = QGroupBox("1. Quelle auswählen")
         file_box_layout = QHBoxLayout()
-        self.single_pdf_button = QPushButton(qta.icon('fa5.file-pdf'), " Einzelne PDF")
+        self.single_pdf_button = QPushButton(qta.icon('fa5.file-pdf', color='#ffffff'), " Einzelne PDF")
         self.single_pdf_button.clicked.connect(self.pick_single_pdf)
-        self.folder_button = QPushButton(qta.icon('fa5.folder-open'), " Ganzer Ordner")
+        self.folder_button = QPushButton(qta.icon('fa5.folder-open', color='#ffffff'), " Ganzer Ordner")
         self.folder_button.clicked.connect(self.pick_folder)
         file_box_layout.addWidget(self.single_pdf_button)
         file_box_layout.addWidget(self.folder_button)
@@ -506,10 +666,10 @@ class DarkMarkApp(QMainWindow):
         nav_box = QGroupBox("Navigation")
         nav_layout = QVBoxLayout(nav_box)
         pdf_nav_layout = QHBoxLayout()
-        self.prev_pdf_button = QPushButton(qta.icon('fa5s.chevron-left'), "")
+        self.prev_pdf_button = QPushButton(qta.icon('fa5s.chevron-left', color='#ffffff'), "")
         self.prev_pdf_button.clicked.connect(self.prev_pdf)
         self.pdf_info_label = QLabel("PDF: -/-")
-        self.next_pdf_button = QPushButton(qta.icon('fa5s.chevron-right'), "")
+        self.next_pdf_button = QPushButton(qta.icon('fa5s.chevron-right', color='#ffffff'), "")
         self.next_pdf_button.clicked.connect(self.next_pdf)
         pdf_nav_layout.addWidget(self.prev_pdf_button)
         pdf_nav_layout.addWidget(self.pdf_info_label, 1, Qt.AlignmentFlag.AlignCenter)
@@ -517,10 +677,10 @@ class DarkMarkApp(QMainWindow):
         nav_layout.addLayout(pdf_nav_layout)
 
         page_nav_layout = QHBoxLayout()
-        self.prev_page_button = QPushButton(qta.icon('fa5s.arrow-left'), "")
+        self.prev_page_button = QPushButton(qta.icon('fa5s.arrow-left', color='#ffffff'), "")
         self.prev_page_button.clicked.connect(self.prev_page)
         self.page_info_label = QLabel("Seite: -/-")
-        self.next_page_button = QPushButton(qta.icon('fa5s.arrow-right'), "")
+        self.next_page_button = QPushButton(qta.icon('fa5s.arrow-right', color='#ffffff'), "")
         self.next_page_button.clicked.connect(self.next_page)
         page_nav_layout.addWidget(self.prev_page_button)
         page_nav_layout.addWidget(self.page_info_label, 1, Qt.AlignmentFlag.AlignCenter)
@@ -531,21 +691,35 @@ class DarkMarkApp(QMainWindow):
 
         action_box = QGroupBox("2. Aktion ausführen")
         action_layout = QVBoxLayout(action_box)
-        self.redact_preview_button = QPushButton(qta.icon('fa5s.eye-slash'), " Alle PDFs schwärzen (Vorschau)")
-        self.redact_preview_button.setObjectName("AccentButton")
+        action_layout.setSpacing(10)
+        
+        # Auswahl Farbe
+        color_layout = QHBoxLayout()
+        color_label = QLabel("Schwärzungsfarbe:")
+        self.color_combo = QComboBox()
+        self.color_combo.addItems(["Schwarz", "Weiß"])
+        self.color_combo.setStyleSheet("QComboBox { background-color: #3e3e3e; color: white; border: 1px solid #555; padding: 5px; }")
+        self.color_combo.currentIndexChanged.connect(self.update_redaction_color)
+        color_layout.addWidget(color_label)
+        color_layout.addWidget(self.color_combo)
+        action_layout.addLayout(color_layout)
+
+        self.redact_preview_button = QPushButton(qta.icon('fa5s.eye-slash', color='#ffffff'), " Alle PDFs schwärzen (Vorschau)")
         self.redact_preview_button.clicked.connect(self.start_batch_preview_redaction)
         action_layout.addWidget(self.redact_preview_button)
 
-        self.save_button = QPushButton(qta.icon('fa5s.save'), " Vorschau speichern")
+        self.save_button = QPushButton(qta.icon('fa5s.save', color='#ffffff'), " Vorschau speichern")
         self.save_button.clicked.connect(self.save_redacted_preview)
         action_layout.addWidget(self.save_button)
-        action_layout.addWidget(self._create_separator())
+        
+        sep = self._create_separator()
+        action_layout.addWidget(sep)
 
-        self.exit_preview_button = QPushButton(qta.icon('fa5s.undo'), " Zurück zu Original-PDFs")
+        self.exit_preview_button = QPushButton(qta.icon('fa5s.undo', color='#ffffff'), " Zurück zu Original-PDFs")
         self.exit_preview_button.clicked.connect(self.go_to_original_mode)
         action_layout.addWidget(self.exit_preview_button)
 
-        self.redact_all_button = QPushButton(qta.icon('fa5s.rocket'), " Alle PDFs verarbeiten & speichern")
+        self.redact_all_button = QPushButton(qta.icon('fa5s.rocket', color='#ffffff'), " Alle PDFs verarbeiten & speichern")
         self.redact_all_button.setObjectName("AccentButton")
         self.redact_all_button.clicked.connect(self.redact_all_pdfs_batch)
         action_layout.addWidget(self.redact_all_button)
@@ -558,54 +732,66 @@ class DarkMarkApp(QMainWindow):
         self.template_ui_group = QWidget()
         template_ui_layout = QVBoxLayout(self.template_ui_group)
         template_ui_layout.setContentsMargins(0,0,0,0)
+        template_ui_layout.setSpacing(15)
 
         template_file_box = QGroupBox("1. PDF zum Markieren importieren")
         template_file_layout = QHBoxLayout(template_file_box)
-        self.import_template_pdf_button = QPushButton(qta.icon('fa5.file-pdf'), " PDF importieren")
+        self.import_template_pdf_button = QPushButton(qta.icon('fa5.file-pdf', color='#ffffff'), " PDF importieren")
         self.import_template_pdf_button.clicked.connect(self.import_pdf_for_template_creation)
         template_file_layout.addWidget(self.import_template_pdf_button)
         template_ui_layout.addWidget(template_file_box)
 
         template_action_box = QGroupBox("2. Markierungen verwalten")
         template_action_layout = QVBoxLayout(template_action_box)
-        self.undo_template_button = QPushButton(qta.icon('fa5s.eraser'), " Letzte Markierung entfernen")
+        template_action_layout.setSpacing(10)
+        
+        self.undo_template_button = QPushButton(qta.icon('fa5s.eraser', color='#ffffff'), " Letzte Markierung entfernen")
         self.undo_template_button.clicked.connect(self.undo_last_template_rectangle)
         self.undo_template_button.setEnabled(False)
         template_action_layout.addWidget(self.undo_template_button)
 
-        self.save_template_button = QPushButton(qta.icon('fa5s.save'), " Markierte Bereiche als Templates speichern")
+        self.save_template_button = QPushButton(qta.icon('fa5s.save', color='#ffffff'), " Markierte Bereiche speichern")
         self.save_template_button.setObjectName("AccentButton")
         self.save_template_button.clicked.connect(self.save_marked_areas_as_templates)
         self.save_template_button.setEnabled(False)
         template_action_layout.addWidget(self.save_template_button)
 
         # Button zum Zurückkehren zum Schwärzungsmodus aus dem Template-Modus
-        self.return_to_redaction_button = QPushButton(qta.icon('fa5s.arrow-alt-circle-left'), " Zurück zum Schwärzen")
+        self.return_to_redaction_button = QPushButton(qta.icon('fa5s.arrow-alt-circle-left', color='#ffffff'), " Zurück zum Schwärzen")
         self.return_to_redaction_button.clicked.connect(lambda: self.switch_mode("redaction"))
         template_action_layout.addWidget(self.return_to_redaction_button)
 
         template_ui_layout.addWidget(template_action_box)
         template_ui_layout.addStretch(1)
 
-        # NEU: Templates laden und verwalten Buttons
+        # NEU: Templates laden und verwalten Buttons - GRID LAYOUT
         template_load_manage_box = QGroupBox("3. Templates verwalten")
-        template_load_manage_layout = QVBoxLayout(template_load_manage_box)
+        from PySide6.QtWidgets import QGridLayout
+        grid_layout = QGridLayout(template_load_manage_box)
+        grid_layout.setSpacing(10)
 
-        self.reload_user_templates_button = QPushButton(qta.icon('fa5s.sync-alt'), " Templates neu laden")
+        self.reload_user_templates_button = QPushButton(qta.icon('fa5s.sync-alt', color='#ffffff'), " Neu laden")
+        self.reload_user_templates_button.setToolTip("Templates neu aus dem Speicher laden")
         self.reload_user_templates_button.clicked.connect(self.reload_templates_data_from_disk)
-        template_load_manage_layout.addWidget(self.reload_user_templates_button)
-
-        self.import_templates_button = QPushButton(qta.icon('fa5s.file-import'), " Templates importieren (Ordner wählen)")
+        
+        self.import_templates_button = QPushButton(qta.icon('fa5s.file-import', color='#ffffff'), " Importieren")
+        self.import_templates_button.setToolTip("Vorhandene Templates aus einem Ordner importieren")
         self.import_templates_button.clicked.connect(self.import_templates_from_folder)
-        template_load_manage_layout.addWidget(self.import_templates_button)
 
-        self.backup_templates_button = QPushButton(qta.icon('fa5s.archive'), " Templates sichern (Ordner wählen)")
+        self.backup_templates_button = QPushButton(qta.icon('fa5s.archive', color='#ffffff'), " Sichern")
+        self.backup_templates_button.setToolTip("Backup der aktuellen Templates erstellen")
         self.backup_templates_button.clicked.connect(self.backup_user_templates)
-        template_load_manage_layout.addWidget(self.backup_templates_button)
 
-        self.clear_user_templates_button = QPushButton(qta.icon('fa5s.trash-alt'), " Alle Templates löschen")
+        self.clear_user_templates_button = QPushButton(qta.icon('fa5s.trash-alt', color='#ffffff'), " Löschen")
+        self.clear_user_templates_button.setObjectName("DestructiveButton")
+        self.clear_user_templates_button.setToolTip("Alle Templates unwiderruflich löschen")
         self.clear_user_templates_button.clicked.connect(self.clear_user_templates_data)
-        template_load_manage_layout.addWidget(self.clear_user_templates_button)
+
+        # Grid placement: (row, col)
+        grid_layout.addWidget(self.reload_user_templates_button, 0, 0)
+        grid_layout.addWidget(self.import_templates_button, 0, 1)
+        grid_layout.addWidget(self.backup_templates_button, 1, 0)
+        grid_layout.addWidget(self.clear_user_templates_button, 1, 1)
 
         template_ui_layout.addWidget(template_load_manage_box)
         template_ui_layout.addStretch(1)
@@ -617,8 +803,7 @@ class DarkMarkApp(QMainWindow):
         left_layout.addStretch(1) # Flexibler Abstand
 
         # "Templates verwalten" Button ganz unten
-        self.manage_templates_button = QPushButton(qta.icon('fa5s.user-secret'), " Templates verwalten (Passwort)")
-        self.manage_templates_button.setObjectName("AccentButton")
+        self.manage_templates_button = QPushButton(qta.icon('fa5s.user-secret', color='#ffffff'), " Templates-Modus (Passwort)")
         self.manage_templates_button.clicked.connect(self.show_template_management_dialog)
         left_layout.addWidget(self.manage_templates_button)
 
@@ -652,6 +837,14 @@ class DarkMarkApp(QMainWindow):
         self.stacked_display_widget.setCurrentIndex(0)
 
         return main_widget
+
+    def update_redaction_color(self, index):
+        if index == 0: # Schwarz
+            self.state["redaction_color"] = (0, 0, 0)
+            print("DEBUG: Schwärzungsfarbe auf SCHWARZ gesetzt.")
+        else: # Weiß
+            self.state["redaction_color"] = (1, 1, 1)
+            print("DEBUG: Schwärzungsfarbe auf WEISS gesetzt.")
 
     def _create_separator(self):
         sep = QFrame()
@@ -1011,8 +1204,10 @@ class DarkMarkApp(QMainWindow):
         self.status_label.setText("Vorschau-Schwärzung wird vorbereitet...")
         self.update_ui()
 
+        self.update_ui()
+
         for original_path in self.state["original_pdf_paths"]:
-            task = PreviewRedactionTask(original_path, self.current_temp_preview_dir, self.templates_data)
+            task = PreviewRedactionTask(original_path, self.current_temp_preview_dir, self.templates_data, redaction_color=self.state["redaction_color"])
             task.signals.finished.connect(self.on_preview_task_finished)
             task.signals.error.connect(self.on_preview_task_error)
             self.thread_pool.start(task)
@@ -1100,7 +1295,7 @@ class DarkMarkApp(QMainWindow):
         for in_path in self.state["original_pdf_paths"]:
             name, ext = os.path.splitext(os.path.basename(in_path))
             out_path = os.path.join(output_folder, f"{name}_geschwaerzt{ext}")
-            task = RedactionTask(in_path, out_path, self.templates_data)
+            task = RedactionTask(in_path, out_path, self.templates_data, redaction_color=self.state["redaction_color"])
             task.signals.finished.connect(self.on_batch_task_finished)
             task.signals.error.connect(self.on_batch_task_error)
             self.thread_pool.start(task)
