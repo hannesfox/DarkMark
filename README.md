@@ -23,7 +23,7 @@ Um DarkMark lokal auszuführen, befolgen Sie diese Schritte:
 
 2.  **Repository klonen:**
     ```bash
-    git clone https://github.com/JohannesGschwendtner/DarkMark.git
+    git clone https://github.com/hannesfox/DarkMark.git
     cd DarkMark
     ```
 
