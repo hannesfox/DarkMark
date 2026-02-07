@@ -3,6 +3,7 @@ import shutil
 import io
 import sys
 import tempfile
+import json
 from typing import List, Dict, Any, Optional
 
 # NEU: appdirs für plattformübergreifende Pfade zu Benutzerdaten
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QProgressBar, QFrame, QGroupBox,
     QFileDialog, QMessageBox, QStackedWidget, QInputDialog, QLineEdit,
-    QComboBox
+    QComboBox, QGridLayout
 )
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QSize, Slot, QUrl, QEvent, QPointF, QRectF
 # QIcon bleibt importiert
@@ -58,9 +59,11 @@ def get_base_path() -> str:
 BASE_PATH = get_base_path()
 
 # Pfad für benutzerdefinierte Templates (immer beschreibbar)
-APP_NAME = "DarkMark"
+APP_NAME = "DarkMark 2.0"
 APP_AUTHOR = "JohannesGschwendtner"
-USER_TEMPLATES_PATH = os.path.join(user_data_dir(APP_NAME, APP_AUTHOR), "darkmark_user_templates")
+USER_DATA_DIR = user_data_dir(APP_NAME, APP_AUTHOR)
+USER_TEMPLATES_PATH = os.path.join(USER_DATA_DIR, "darkmark_user_templates")
+USER_SETTINGS_PATH = os.path.join(USER_DATA_DIR, "settings.json")
 
 MATCH_THRESHOLD = 0.6
 RENDER_DPI = 300
@@ -119,16 +122,17 @@ QPushButton:disabled {
     color: #666;
 }
 QPushButton#AccentButton {
-    background-color: #1e88e5;
-    border: 1px solid #1565c0;
+    background-color: #1565c0;
+    border: 1px solid #0d47a1;
+    color: #ffffff;
     font-weight: bold;
 }
 QPushButton#AccentButton:hover {
-    background-color: #2196f3;
-    border-color: #42a5f5;
+    background-color: #1976d2;
+    border-color: #1565c0;
 }
 QPushButton#AccentButton:pressed {
-    background-color: #1976d2;
+    background-color: #0d47a1;
 }
 QPushButton#DestructiveButton {
     background-color: #c62828;
@@ -565,6 +569,8 @@ class DarkMarkApp(QMainWindow):
         self.preview_batch_processed = 0
         self.current_temp_preview_dir = None
 
+        self.settings = self.load_settings()
+
         # NEU: Für das "dark"-Schlüsselwort-Trigger
         self._keyword_trigger = "dark"
         self._key_buffer = ""
@@ -734,6 +740,37 @@ class DarkMarkApp(QMainWindow):
         template_ui_layout.setContentsMargins(0,0,0,0)
         template_ui_layout.setSpacing(15)
 
+        # --- Pfad-Einstellungen (Persistente Pfade) ---
+        path_settings_box = QGroupBox("Allgemeine Pfadeinstellungen")
+        path_settings_layout = QGridLayout(path_settings_box)
+        path_settings_layout.setSpacing(10)
+        
+        # Open Path
+        path_settings_layout.addWidget(QLabel("Öffnen (Standard):"), 0, 0)
+        self.lbl_open_path = QLabel(self.settings.get("default_open_path", "Nicht gesetzt"))
+        self.lbl_open_path.setStyleSheet("color: #888; font-style: italic; font-size: 11px;")
+        self.lbl_open_path.setWordWrap(True)
+        path_settings_layout.addWidget(self.lbl_open_path, 0, 1)
+        self.btn_set_open_path = QPushButton(qta.icon('fa5s.folder', color='#ffffff'), "")
+        self.btn_set_open_path.setToolTip("Standard-Pfad zum Öffnen ändern")
+        self.btn_set_open_path.setFixedWidth(40)
+        self.btn_set_open_path.clicked.connect(self.select_default_open_path)
+        path_settings_layout.addWidget(self.btn_set_open_path, 0, 2)
+
+        # Save Path
+        path_settings_layout.addWidget(QLabel("Speichern (Standard):"), 1, 0)
+        self.lbl_save_path = QLabel(self.settings.get("default_save_path", "Nicht gesetzt"))
+        self.lbl_save_path.setStyleSheet("color: #888; font-style: italic; font-size: 11px;")
+        self.lbl_save_path.setWordWrap(True)
+        path_settings_layout.addWidget(self.lbl_save_path, 1, 1)
+        self.btn_set_save_path = QPushButton(qta.icon('fa5s.save', color='#ffffff'), "")
+        self.btn_set_save_path.setToolTip("Standard-Pfad zum Speichern ändern")
+        self.btn_set_save_path.setFixedWidth(40)
+        self.btn_set_save_path.clicked.connect(self.select_default_save_path)
+        path_settings_layout.addWidget(self.btn_set_save_path, 1, 2)
+
+        template_ui_layout.addWidget(path_settings_box)
+
         template_file_box = QGroupBox("1. PDF zum Markieren importieren")
         template_file_layout = QHBoxLayout(template_file_box)
         self.import_template_pdf_button = QPushButton(qta.icon('fa5.file-pdf', color='#ffffff'), " PDF importieren")
@@ -766,7 +803,6 @@ class DarkMarkApp(QMainWindow):
 
         # NEU: Templates laden und verwalten Buttons - GRID LAYOUT
         template_load_manage_box = QGroupBox("3. Templates verwalten")
-        from PySide6.QtWidgets import QGridLayout
         grid_layout = QGridLayout(template_load_manage_box)
         grid_layout.setSpacing(10)
 
@@ -803,8 +839,8 @@ class DarkMarkApp(QMainWindow):
         left_layout.addStretch(1) # Flexibler Abstand
 
         # "Templates verwalten" Button ganz unten
-        self.manage_templates_button = QPushButton(qta.icon('fa5s.user-secret', color='#ffffff'), " Templates-Modus (Passwort)")
-        self.manage_templates_button.clicked.connect(self.show_template_management_dialog)
+        self.manage_templates_button = QPushButton(qta.icon('fa5s.cog', color='#ffffff'), " Settings")
+        self.manage_templates_button.clicked.connect(self.on_bottom_mode_button_clicked)
         left_layout.addWidget(self.manage_templates_button)
 
         # Footer (bleibt am unteren Rand)
@@ -855,6 +891,12 @@ class DarkMarkApp(QMainWindow):
     # ==========================================================================
     #     Modus-Wechsel-Logik (Angepasst)
     # ==========================================================================
+
+    def on_bottom_mode_button_clicked(self):
+        if self.state["current_mode"] == "redaction":
+            self.show_template_management_dialog()
+        else:
+            self.switch_mode("redaction")
 
     def show_template_management_dialog(self):
         if self.state["is_processing"]:
@@ -921,6 +963,14 @@ class DarkMarkApp(QMainWindow):
         self.template_ui_group.setVisible(is_in_template_mode)
 
         self.manage_templates_button.setEnabled(not is_processing)
+
+        # Update button text and icon based on mode
+        if is_in_redaction_mode:
+            self.manage_templates_button.setText(" Settings")
+            self.manage_templates_button.setIcon(qta.icon('fa5s.cog', color='#ffffff'))
+        else:
+            self.manage_templates_button.setText(" Zurück zum Schwärzen")
+            self.manage_templates_button.setIcon(qta.icon('fa5s.arrow-left', color='#ffffff'))
 
         # Aktuellen Template-Status des Labels aktualisieren
         tpl_status_text = (f"{len(self.templates_data)} Templates geladen." if self.templates_data
@@ -1123,13 +1173,15 @@ class DarkMarkApp(QMainWindow):
 
 
     def pick_single_pdf(self):
-        filepath, _ = QFileDialog.getOpenFileName(self, "PDF-Datei auswählen", "", "PDF-Dateien (*.pdf)")
+        start_dir = self.settings.get("default_open_path", "")
+        filepath, _ = QFileDialog.getOpenFileName(self, "PDF-Datei auswählen", start_dir, "PDF-Dateien (*.pdf)")
         if filepath:
             self._handle_pdf_paths([filepath], "manuell")
         self.setFocus() # Fokus nach Dialog zurücksetzen
 
     def pick_folder(self):
-        folderpath = QFileDialog.getExistingDirectory(self, "Ordner mit PDFs auswählen")
+        start_dir = self.settings.get("default_open_path", "")
+        folderpath = QFileDialog.getExistingDirectory(self, "Ordner mit PDFs auswählen", start_dir)
         if folderpath:
             pdf_files = [os.path.join(folderpath, f) for f in os.listdir(folderpath) if f.lower().endswith('.pdf')]
             self._handle_pdf_paths(pdf_files, "aus Ordner")
@@ -1255,7 +1307,10 @@ class DarkMarkApp(QMainWindow):
         if not ext: ext = ".pdf"
         elif ext.lower() != ".pdf": ext = ".pdf"
 
-        save_path, _ = QFileDialog.getSaveFileName(self, "Geschwärztes PDF speichern", f"{name}_geschwaerzt{ext}",
+        start_dir = self.settings.get("default_save_path", "")
+        recommended_name = os.path.join(start_dir, f"{name}_g{ext}") if start_dir else f"{name}_g{ext}"
+        
+        save_path, _ = QFileDialog.getSaveFileName(self, "Geschwärztes PDF speichern", recommended_name,
                                                    "PDF-Dateien (*.pdf)")
         if save_path:
             try:
@@ -1273,8 +1328,9 @@ class DarkMarkApp(QMainWindow):
         if not self.templates_data:
             QMessageBox.warning(self, "Keine Templates", "Es wurden keine Schwärzungs-Templates gefunden.")
             return
-
-        output_folder = QFileDialog.getExistingDirectory(self, "Ausgabeordner für geschwärzte PDFs wählen")
+        
+        start_dir = self.settings.get("default_save_path", "")
+        output_folder = QFileDialog.getExistingDirectory(self, "Ausgabeordner für geschwärzte PDFs wählen", start_dir)
         if not output_folder:
             self.setFocus() # Fokus zurück, wenn Dialog abgebrochen
             return
@@ -1294,7 +1350,7 @@ class DarkMarkApp(QMainWindow):
 
         for in_path in self.state["original_pdf_paths"]:
             name, ext = os.path.splitext(os.path.basename(in_path))
-            out_path = os.path.join(output_folder, f"{name}_geschwaerzt{ext}")
+            out_path = os.path.join(output_folder, f"{name}_g{ext}")          #hier ist die endung der geschwärzten dateien
             task = RedactionTask(in_path, out_path, self.templates_data, redaction_color=self.state["redaction_color"])
             task.signals.finished.connect(self.on_batch_task_finished)
             task.signals.error.connect(self.on_batch_task_error)
@@ -1586,6 +1642,65 @@ class DarkMarkApp(QMainWindow):
         self.update_ui()
         self.setFocus() # Fokus nach Aktion zurücksetzen
 
+
+    # NEU: Methode zum Importieren von Templates aus einem Ordner in den USER_TEMPLATES_PATH
+    @Slot()
+    def import_templates_from_folder(self):
+        if self.state["is_processing"]:
+            QMessageBox.warning(self, "Verarbeitung läuft", "Bitte warten Sie, bis die aktuelle Verarbeitung abgeschlossen ist.")
+            return
+
+        source_dir = QFileDialog.getExistingDirectory(self, "Ordner mit Templates zum Importieren auswählen")
+        if not source_dir:
+            self.setFocus() # Fokus zurücksetzen, wenn Dialog abgebrochen
+            return
+
+    # ==========================================================================
+    #     Settings Management
+    # ==========================================================================
+
+    def load_settings(self) -> dict:
+        if os.path.exists(USER_SETTINGS_PATH):
+            try:
+                with open(USER_SETTINGS_PATH, 'r') as f:
+                    print(f"DEBUG: Einstellungen geladen aus {USER_SETTINGS_PATH}")
+                    return json.load(f)
+            except Exception as e:
+                print(f"WARNUNG: Fehler beim Laden der Einstellungen: {e}")
+                return {}
+        return {}
+
+    def save_settings(self):
+        if not os.path.exists(USER_DATA_DIR):
+            try:
+                os.makedirs(USER_DATA_DIR)
+            except OSError:
+                pass
+        
+        try:
+            with open(USER_SETTINGS_PATH, 'w') as f:
+                json.dump(self.settings, f, indent=4)
+                print(f"DEBUG: Einstellungen gespeichert in {USER_SETTINGS_PATH}")
+        except Exception as e:
+            print(f"ERROR: Fehler beim Speichern der Einstellungen: {e}")
+
+    def select_default_open_path(self):
+        current = self.settings.get("default_open_path", "")
+        folder = QFileDialog.getExistingDirectory(self, "Standard-Ordner zum Öffnen wählen", current)
+        if folder:
+            self.settings["default_open_path"] = folder
+            self.lbl_open_path.setText(folder)
+            self.save_settings()
+        self.setFocus()
+
+    def select_default_save_path(self):
+        current = self.settings.get("default_save_path", "")
+        folder = QFileDialog.getExistingDirectory(self, "Standard-Ordner zum Speichern wählen", current)
+        if folder:
+            self.settings["default_save_path"] = folder
+            self.lbl_save_path.setText(folder)
+            self.save_settings()
+        self.setFocus()
 
     # NEU: Methode zum Importieren von Templates aus einem Ordner in den USER_TEMPLATES_PATH
     @Slot()

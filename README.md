@@ -66,47 +66,45 @@ Nach dem Start befinden Sie sich im Schwärzungsmodus.
     *   **"Zurück zu Original-PDFs"**: Verlässt den Vorschau-Modus und löscht die temporären Vorschau-Dateien.
     *   **"Alle PDFs verarbeiten & speichern"**: Die endgültige Stapelverarbeitung. Wählen Sie einen Ausgabeordner, und DarkMark speichert alle geschwärzten PDFs dort permanent.
 
-### 2. Template-Erstellungsmodus
+### 2. Einstellungen & Template-Verwaltung
 
-Dieser Modus ermöglicht es Ihnen, eigene Schwärzungs-Templates zu erstellen, indem Sie Bereiche auf einer PDF-Seite markieren.
+Hier können Sie Pfade konfigurieren und Ihre Schwärzungs-Templates verwalten.
 
-*   **Zugriff:** Klicken Sie auf den Button "Templates verwalten (Passwort)" unten links.
-    *   **Passwort:** Das Standardpasswort ist `sessel`.
-    *   Nach erfolgreicher Eingabe wechselt die Anwendung in den Template-Erstellungsmodus.
+*   **Zugriff:** Klicken Sie auf den Button **"Settings"** (Zahnrad-Symbol) unten links.
+    *   **Passwort:** Der Zugriff ist geschützt. Das Standardpasswort ist `......`.
+
+*   **Allgemeine Pfadeinstellungen:**
+    *   Hier können Sie Standard-Ordner für das **Öffnen** von PDFs und das **Speichern** der Ergebnisse festlegen.
+    *   Diese Einstellungen werden gespeichert und beim nächsten Start automatisch geladen.
 
 *   **Templates erstellen:**
-    1.  Klicken Sie auf "PDF importieren", um eine PDF-Datei zu laden, aus der Sie Templates erstellen möchten.
-    2.  Ziehen Sie mit der Maus Rechtecke über die Bereiche, die als Templates gespeichert werden sollen (z.B. Unterschriften, Firmenlogos, Stempel).
+    1.  Klicken Sie auf "PDF importieren", um eine PDF-Datei zu laden.
+    2.  Ziehen Sie mit der Maus Rechtecke über die Bereiche, die als Templates gespeichert werden sollen (z.B. Unterschriften, Logos).
     3.  "Letzte Markierung entfernen" löscht das zuletzt gezeichnete Rechteck.
-    4.  "Markierte Bereiche als Templates speichern" speichert jeden markierten Bereich als separate PNG-Datei.
+    4.  "Markierte Bereiche als Templates speichern" speichert die Auswahl als neue Templates.
 
 *   **Template-Verwaltung:**
-    *   **"Templates neu laden"**: Aktualisiert die Liste der Templates aus dem Speicherordner. Nützlich, wenn Sie manuell Templates hinzugefügt haben.
-    *   **"Templates importieren (Ordner wählen)"**: Kopiert `.png`, `.jpg` und ähnliche Bilddateien aus einem ausgewählten Ordner in Ihr Benutzer-Template-Verzeichnis.
-    *   **"Templates sichern (Ordner wählen)"**: Kopiert alle Ihre benutzerdefinierten Templates in einen Sicherungsordner Ihrer Wahl.
-    *   **"Alle Templates löschen"**: Löscht unwiderruflich *alle* benutzerdefinierten Templates aus dem Speicherordner. **Vorsicht!**
+    *   **"Neu laden"**: Aktualisiert die Liste der Templates aus dem Speicherordner.
+    *   **"Importieren"**: Importiert Bilddateien (.png, .jpg) aus einem Ordner als Templates.
+    *   **"Sichern"**: Erstellt ein Backup aller Ihrer Templates in einem gewählten Ordner.
+    *   **"Löschen"**: Löscht alle Templates unwiderruflich.
 
 *   **Zurück zum Schwärzungsmodus:** Klicken Sie auf "Zurück zum Schwärzen", um zum Hauptbildschirm zurückzukehren.
 
 ### ⌨️ Tastatur-Shortcuts
 
-*   **`b`**: Navigiert zum **B**isherigen PDF (im Schwärzungsmodus).
-*   **`n`**: Navigiert zum **N**ächsten PDF (im Schwärzungsmodus).
-*   **`Strg + Pfeil Links`**: Navigiert zur **vorherigen Seite** des aktuellen PDFs (im Schwärzungsmodus).
-*   **`Strg + Pfeil Rechts`**: Navigiert zur **nächsten Seite** des aktuellen PDFs (im Schwärzungsmodus).
-*   **Geheimnisvoller Trigger**: Tippen Sie das Wort `dark` (oder `d-a-r-k`) an einer beliebigen Stelle in der Anwendung, um die Vorschau-Schwärzung zu starten (im Schwärzungsmodus, wenn PDFs geladen sind).
+*   **`b`**: Vorheriges PDF
+*   **`n`**: Nächstes PDF
+*   **`Strg + Pfeil Links`**: Vorherige Seite
+*   **`Strg + Pfeil Rechts`**: Nächste Seite
+*   **`dark`**: Tippen Sie `dark`, um die Vorschau-Schwärzung zu starten.
 
-## 📂 Template-Speicherpfade
+## 📂 Speicherpfade
 
-DarkMark speichert Ihre benutzerdefinierten Templates in einem plattformspezifischen Benutzerdatenverzeichnis, um die Portabilität und den Schutz der Templates zu gewährleisten.
+*   **Templates:** `.../DarkMark/darkmark_user_templates`
+*   **Einstellungen:** `.../DarkMark/settings.json`
 
-Die Templates werden als 300 DPI PNG-Bilder gespeichert. Das ist die optimale Auflösung für die Schwärzungserkennung.
-
-Der genaue Pfad ist:
-
-*   **Windows:** `C:\Users\<Benutzername>\AppData\Local\JohannesGschwendtner\DarkMark\darkmark_user_templates`
-*   **macOS:** `/Users/<Benutzername>/Library/Application Support/DarkMark/darkmark_user_templates`
-*   **Linux:** `/home/<Benutzername>/.local/share/DarkMark/darkmark_user_templates`
+Die genauen Pfade sind plattformabhängig (z.B. unter `AppData` auf Windows oder `Library/Application Support` auf macOS).
 
 ## 🤝 Mitwirken
 
